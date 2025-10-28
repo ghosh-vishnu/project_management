@@ -4,9 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import User
 from django.db import transaction
-from .models import Department, Designation, Employee
+from .models import Employee
 from .serializers import (
-    DepartmentSerializer, DesignationSerializer, 
     EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer
 )
 import random
@@ -19,47 +18,19 @@ def generate_random_password(length=8):
     return ''.join(random.choice(characters) for _ in range(length))
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def department_list(request):
-    """Get list of all departments"""
-    departments = Department.objects.all()
-    serializer = DepartmentSerializer(departments, many=True)
-    return Response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def designation_list(request):
-    """Get list of all designations, optionally filtered by department"""
-    # Get department_id from query params if provided
-    department_id = request.query_params.get('department_id', None)
-    
-    designations = Designation.objects.all()
-    
-    if department_id:
-        # Get department to match designations
-        try:
-            department = Department.objects.get(id=department_id)
-            department_title = department.title
-            
-            # Filter designations that contain this department in their description
-            designations = Designation.objects.filter(
-                description__icontains=department_title
-            )
-        except Department.DoesNotExist:
-            designations = Designation.objects.none()
-    
-    serializer = DesignationSerializer(designations, many=True)
-    return Response(serializer.data)
+def get_value(key, default=''):
+    """Helper function to get first item if list, else return the value"""
+    if isinstance(key, list):
+        return key[0] if key else default
+    return key if key else default
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def employee_names_list(request):
     """Get list of employee names for dropdowns"""
-    employees = Employee.objects.select_related('user', 'designation').filter(is_active=True)
-    data = [{'id': emp.id, 'name': emp.name, 'designation': emp.designation.title if emp.designation else ''} for emp in employees]
+    employees = Employee.objects.select_related('user').filter(is_active=True)
+    data = [{'id': emp.id, 'name': emp.name, 'designation': emp.designation if emp.designation else ''} for emp in employees]
     return Response(data)
 
 
@@ -124,13 +95,6 @@ def create_employee(request):
         
         from .models import Address, BankDetails, Documents
         
-        # Helper function to get first item if list
-        def get_value(key, default=''):
-            value = key
-            if isinstance(key, list):
-                return key[0] if key else default
-            return key if key else default
-        
         # Handle current address
         current_address = None
         current_addr = data.get('current_address', {})
@@ -181,22 +145,46 @@ def create_employee(request):
             if documents_data:
                 documents = Documents.objects.create(**documents_data)
         
-        # Get department and designation
-        department = None
-        dept_id = get_value(data.get('department_id', ''))
-        if dept_id:
-            try:
-                department = Department.objects.get(id=dept_id)
-            except (Department.DoesNotExist, ValueError):
-                pass
+        # Get department and designation as strings
+        department_name = get_value(data.get('department_id', ''))
+        designation_name = get_value(data.get('designation_id', ''))
         
-        designation = None
-        desig_id = get_value(data.get('designation_id', ''))
-        if desig_id:
-            try:
-                designation = Designation.objects.get(id=desig_id)
-            except (Designation.DoesNotExist, ValueError):
-                pass
+        # Map IDs to names if needed (for backward compatibility with hardcoded data)
+        # Frontend sends department_id and designation_id as indexes
+        # We need to get the actual names from the hardcoded lists
+        
+        # Department mapping
+        department_mapping = {
+            '1': 'Project Management', '2': 'Development', '3': 'Design',
+            '4': 'Quality Assurance', '5': 'Human Resources', '6': 'Sales & Marketing',
+            '7': 'Finance & Accounts', '8': 'Support & Operations', 
+            '9': 'IT Infrastructure', '10': 'Research & Innovation'
+        }
+        
+        # Designation mapping based on department
+        designation_mapping = {
+            'Project Management': {'0': 'Project Manager', '1': 'Assistant Project Manager', '2': 'Project Coordinator', '3': 'Project Analyst'},
+            'Development': {'0': 'Full Stack Developer', '1': 'Backend Developer (Python/Django)', '2': 'Frontend Developer (React/Angular)', '3': 'Software Engineer', '4': 'Intern Developer'},
+            'Design': {'0': 'UI/UX Designer', '1': 'Graphic Designer', '2': 'Frontend Designer', '3': 'Creative Lead'},
+            'Quality Assurance': {'0': 'QA Engineer', '1': 'QA Lead', '2': 'Software Tester', '3': 'Automation Tester'},
+            'Human Resources': {'0': 'HR Manager', '1': 'HR Executive', '2': 'Talent Acquisition Specialist'},
+            'Sales & Marketing': {'0': 'Business Development Executive', '1': 'Sales Manager', '2': 'Digital Marketing Executive', '3': 'SEO Specialist'},
+            'Finance & Accounts': {'0': 'Accounts Executive', '1': 'Finance Officer', '2': 'Billing & Payroll Executive'},
+            'Support & Operations': {'0': 'Support Engineer', '1': 'Technical Support Executive', '2': 'Operations Manager'},
+            'IT Infrastructure': {'0': 'System Administrator', '1': 'Network Engineer', '2': 'Cloud Administrator'},
+            'Research & Innovation': {'0': 'R&D Specialist', '1': 'Product Researcher', '2': 'Data Analyst'},
+        }
+        
+        # Get department name
+        dept_name = department_mapping.get(str(department_name), department_name)
+        
+        # Get designation name
+        desig_name = ''
+        if dept_name in designation_mapping:
+            desig_map = designation_mapping[dept_name]
+            desig_name = desig_map.get(str(designation_name), designation_name)
+        else:
+            desig_name = designation_name
         
         # Create employee with proper value extraction
         employee = Employee.objects.create(
@@ -212,8 +200,8 @@ def create_employee(request):
             joining_date=get_value(data.get('joining_date', '')),
             basic_salary=float(get_value(data.get('basic_salary', 0))) if get_value(data.get('basic_salary', 0)) else 0,
             is_active=is_active,
-            department=department,
-            designation=designation,
+            department=dept_name,
+            designation=desig_name,
             current_address=current_address,
             permanent_address=permanent_address,
             bank_details=bank_details,
@@ -239,8 +227,15 @@ def employee_list(request):
     
     page = int(request.GET.get('page', 1))
     page_size = int(request.GET.get('page_size', 25))
+    show_inactive = request.GET.get('show_inactive', 'false').lower() == 'true'
     
-    employees = Employee.objects.select_related('user', 'department', 'designation').all()
+    # Filter based on show_inactive parameter
+    if show_inactive:
+        # Show all employees including inactive ones
+        employees = Employee.objects.select_related('user', 'department', 'designation').all()
+    else:
+        # Show only active employees by default
+        employees = Employee.objects.select_related('user', 'department', 'designation').filter(is_active=True)
     
     paginator = Paginator(employees, page_size)
     page_obj = paginator.get_page(page)
@@ -260,7 +255,7 @@ def employee_list(request):
 def employee_detail(request, pk):
     """Get, update or delete a specific employee"""
     try:
-        employee = Employee.objects.select_related('user', 'department', 'designation',
+        employee = Employee.objects.select_related('user',
                                                     'current_address', 'permanent_address',
                                                     'bank_details', 'documents').get(pk=pk)
     except Employee.DoesNotExist:
@@ -274,13 +269,80 @@ def employee_detail(request, pk):
         return Response(serializer.data)
     
     elif request.method == 'PUT':
-        # TODO: Implement update logic
-        serializer = EmployeeDetailSerializer(employee, data=request.data, partial=True)
+        # Parse nested FormData structure similar to create
+        data = {}
+        for key, value in request.data.items():
+            if '.' in key:
+                parts = key.split('.')
+                if len(parts) == 2:
+                    if parts[0] not in data:
+                        data[parts[0]] = {}
+                    data[parts[0]][parts[1]] = value
+                else:
+                    data[key] = value
+            else:
+                data[key] = value
+        
+        # Handle department and designation as strings
+        if 'department_id' in data:
+            department_mapping = {
+                '1': 'Project Management', '2': 'Development', '3': 'Design',
+                '4': 'Quality Assurance', '5': 'Human Resources', '6': 'Sales & Marketing',
+                '7': 'Finance & Accounts', '8': 'Support & Operations', 
+                '9': 'IT Infrastructure', '10': 'Research & Innovation'
+            }
+            dept_id = str(get_value(data.get('department_id', '')))
+            data['department'] = department_mapping.get(dept_id, dept_id)
+            
+        if 'designation_id' in data and 'department' in data:
+            designation_mapping = {
+                'Project Management': {'0': 'Project Manager', '1': 'Assistant Project Manager', '2': 'Project Coordinator', '3': 'Project Analyst'},
+                'Development': {'0': 'Full Stack Developer', '1': 'Backend Developer (Python/Django)', '2': 'Frontend Developer (React/Angular)', '3': 'Software Engineer', '4': 'Intern Developer'},
+                'Design': {'0': 'UI/UX Designer', '1': 'Graphic Designer', '2': 'Frontend Designer', '3': 'Creative Lead'},
+                'Quality Assurance': {'0': 'QA Engineer', '1': 'QA Lead', '2': 'Software Tester', '3': 'Automation Tester'},
+                'Human Resources': {'0': 'HR Manager', '1': 'HR Executive', '2': 'Talent Acquisition Specialist'},
+                'Sales & Marketing': {'0': 'Business Development Executive', '1': 'Sales Manager', '2': 'Digital Marketing Executive', '3': 'SEO Specialist'},
+                'Finance & Accounts': {'0': 'Accounts Executive', '1': 'Finance Officer', '2': 'Billing & Payroll Executive'},
+                'Support & Operations': {'0': 'Support Engineer', '1': 'Technical Support Executive', '2': 'Operations Manager'},
+                'IT Infrastructure': {'0': 'System Administrator', '1': 'Network Engineer', '2': 'Cloud Administrator'},
+                'Research & Innovation': {'0': 'R&D Specialist', '1': 'Product Researcher', '2': 'Data Analyst'},
+            }
+            dept_name = data.get('department', '')
+            desig_id = str(get_value(data.get('designation_id', '')))
+            if dept_name in designation_mapping:
+                desig_map = designation_mapping[dept_name]
+                data['designation'] = desig_map.get(desig_id, desig_id)
+        
+        # Use the parsed data for serialization
+        serializer = EmployeeDetailSerializer(employee, data=data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     elif request.method == 'DELETE':
-        employee.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        # Soft delete: deactivate employee and linked user, revoke tokens
+        try:
+            # Deactivate employee record
+            if hasattr(employee, 'is_active'):
+                employee.is_active = False
+                employee.save(update_fields=['is_active'])
+
+            # Deactivate associated user and remove auth tokens
+            if employee.user:
+                employee.user.is_active = False
+                employee.user.save(update_fields=['is_active'])
+                try:
+                    from rest_framework.authtoken.models import Token
+                    Token.objects.filter(user=employee.user).delete()
+                except Exception:
+                    # Token model might not be configured; ignore silently
+                    pass
+
+            return Response({
+                'detail': 'Employee deactivated successfully'
+            }, status=status.HTTP_200_OK)
+        except Exception as exc:
+            return Response({
+                'error': f'Failed to deactivate employee: {exc}'
+            }, status=status.HTTP_400_BAD_REQUEST)

@@ -28,22 +28,34 @@ const FileUploadInput = ({
   const [fileName, setFileName] = useState("");
   const [previewURL, setPreviewURL] = useState(null);
   const [previewType, setPreviewType] = useState(null); // "image" | "pdf" | null
+  
+  // Add a key to reset file input when form is reset
+  const [key, setKey] = useState(0);
 
 
   useEffect(() => {
     if (defaultFileUrl) {
+      console.log(`Setting default file URL for ${registerName}:`, defaultFileUrl);
       setPreviewURL(defaultFileUrl);
-      if (defaultFileUrl.endsWith(".pdf")) {
+      // Check file extension more robustly
+      const urlLower = defaultFileUrl.toLowerCase();
+      if (urlLower.includes('.pdf')) {
         setPreviewType("pdf");
       } else if (
-        defaultFileUrl.endsWith(".jpg") ||
-        defaultFileUrl.endsWith(".jpeg") ||
-        defaultFileUrl.endsWith(".png")
+        urlLower.includes('.jpg') ||
+        urlLower.includes('.jpeg') ||
+        urlLower.includes('.png') ||
+        urlLower.includes('.webp') ||
+        urlLower.includes('.gif')
       ) {
         setPreviewType("image");
       }
+    } else {
+      // Reset if no default URL
+      setPreviewURL(null);
+      setPreviewType(null);
     }
-  }, [defaultFileUrl]);
+  }, [defaultFileUrl, registerName]);
 
   // File preview function
   const handleFileChange = (e) => {
@@ -63,8 +75,14 @@ const FileUploadInput = ({
         setPreviewURL(null);
       }
     } else {
-      setFileName("");
-      setPreviewImage(null);
+      // Don't reset preview if file input is cleared - keep default URL
+      if (defaultFileUrl) {
+        setPreviewURL(defaultFileUrl);
+      } else {
+        setFileName("");
+        setPreviewURL(null);
+        setPreviewType(null);
+      }
     }
   };
 
@@ -79,6 +97,7 @@ const FileUploadInput = ({
           type="file"
           id={id}
           accept={allowedFileTypes}
+          key={key}
           {...register(registerName, {
             required: required ? "This field is required." : false,
             validate: validateFileType,
@@ -106,11 +125,17 @@ const FileUploadInput = ({
           )}
 
           {previewType === "pdf" && previewURL && (
-            <iframe
-              src={previewURL}
-              title="PDF Preview"
-              className="w-full h-20 border rounded-md"
-            />
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-gray-600 text-sm">📄 PDF Document</div>
+              <a 
+                href={previewURL} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 text-sm underline"
+              >
+                View Document →
+              </a>
+            </div>
           )}
           {fileName && (
             <small className="text-green-600">Selected: {fileName}</small>

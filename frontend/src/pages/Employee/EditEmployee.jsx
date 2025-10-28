@@ -19,6 +19,79 @@ import ErrorAlert from "../../components/Alert/ErrorAlert";
 import SuccessAlert from "../../components/Alert/SuccessAlert";
 import { getToken } from "../../Token";
 
+// Hardcoded departments and designations
+const HARDCODED_DEPARTMENTS = [
+  { id: 1, title: "Project Management" },
+  { id: 2, title: "Development" },
+  { id: 3, title: "Design" },
+  { id: 4, title: "Quality Assurance" },
+  { id: 5, title: "Human Resources" },
+  { id: 6, title: "Sales & Marketing" },
+  { id: 7, title: "Finance & Accounts" },
+  { id: 8, title: "Support & Operations" },
+  { id: 9, title: "IT Infrastructure" },
+  { id: 10, title: "Research & Innovation" },
+];
+
+const DEPARTMENT_TO_DESIGNATIONS = {
+  "Project Management": [
+    "Project Manager",
+    "Assistant Project Manager",
+    "Project Coordinator",
+    "Project Analyst",
+  ],
+  "Development": [
+    "Full Stack Developer",
+    "Backend Developer (Python/Django)",
+    "Frontend Developer (React/Angular)",
+    "Software Engineer",
+    "Intern Developer",
+  ],
+  "Design": [
+    "UI/UX Designer",
+    "Graphic Designer",
+    "Frontend Designer",
+    "Creative Lead",
+  ],
+  "Quality Assurance": [
+    "QA Engineer",
+    "QA Lead",
+    "Software Tester",
+    "Automation Tester",
+  ],
+  "Human Resources": [
+    "HR Manager",
+    "HR Executive",
+    "Talent Acquisition Specialist",
+  ],
+  "Sales & Marketing": [
+    "Business Development Executive",
+    "Sales Manager",
+    "Digital Marketing Executive",
+    "SEO Specialist",
+  ],
+  "Finance & Accounts": [
+    "Accounts Executive",
+    "Finance Officer",
+    "Billing & Payroll Executive",
+  ],
+  "Support & Operations": [
+    "Support Engineer",
+    "Technical Support Executive",
+    "Operations Manager",
+  ],
+  "IT Infrastructure": [
+    "System Administrator",
+    "Network Engineer",
+    "Cloud Administrator",
+  ],
+  "Research & Innovation": [
+    "R&D Specialist",
+    "Product Researcher",
+    "Data Analyst",
+  ],
+};
+
 // Select dropdown for gender
 const SelectOthers = React.forwardRef(
   ({ onChange, onBlur, name, label, options = [], selectOption }, ref) => (
@@ -41,7 +114,7 @@ const SelectOthers = React.forwardRef(
 
 // Select dropdown for designation
 const SelectDesignation = React.forwardRef(
-  ({ onChange, onBlur, name, label, options = [] }, ref) => (
+  ({ onChange, onBlur, name, label, options = [], disabled = false }, ref) => (
     <>
       <label htmlFor="employeeDesignation">
         {label} <span className="text-red-600">*</span>{" "}
@@ -52,11 +125,12 @@ const SelectDesignation = React.forwardRef(
         ref={ref}
         onChange={onChange}
         onBlur={onBlur}
+        disabled={disabled}
       >
         <option value="">Select Designation</option>
         {options &&
           options.map((option, index) => (
-            <option key={option.id} value={option.id}>
+            <option key={option.id ?? index} value={option.id ?? index}>
               {option.title}
             </option>
           ))}
@@ -158,85 +232,36 @@ const EditEmployee = () => {
     mode: "onChange",
   });
 
-  // Fetching the data of Departments
-  const [departments, setDepartments] = useState([]);
-  const fetchDepartments = async () => {
-    try {
-      const accessToken = getToken("accessToken");
-      if (accessToken) {
-        const response = await axios.get(
-          `${BASE_API_URL}/peoples/departments/`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-        setDepartments(response.data);
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  // Fetching the data of Designations
+  // Fetching the data of Departments - Using hardcoded data
+  const [departments, setDepartments] = useState(HARDCODED_DEPARTMENTS);
   const [designations, setDesignations] = useState([]);
-  const fetchDesignations = async () => {
-    try {
-      const accessToken = getToken("accessToken");
-      if (accessToken) {
-        const response = await axios.get(
-          `${BASE_API_URL}/peoples/designations/`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-        setDesignations(response.data);
-      }
-    } catch (error) {
-      // console.log(error);
-    }
-  };
-  
-  // Fetch filtered designations based on department
-  const fetchDesignationsForDepartment = async (departmentId) => {
-    try {
-      const accessToken = getToken("accessToken");
-      if (accessToken && departmentId) {
-        const response = await axios.get(
-          `${BASE_API_URL}/peoples/designations/?department_id=${departmentId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-        setDesignations(response.data);
-      }
-    } catch (error) {
-      console.log("Error fetching designations:", error);
-    }
-  };
 
   // Watch department_id to filter designations
   const selectedDepartment = watch("department_id");
   
-  // Fetch designations when department changes
+  // Get designations based on selected department using hardcoded mapping
   useEffect(() => {
     if (selectedDepartment) {
-      fetchDesignationsForDepartment(selectedDepartment);
-      // Clear designation when department changes (unless it's the initial load)
-      if (selectedDepartment !== getValues("designation_id")) {
-        setValue("designation_id", "");
+      // Get department title from hardcoded list
+      const dept = departments.find((d) => String(d.id) === String(selectedDepartment));
+      const deptTitle = dept ? dept.title : "";
+      
+      // Get designations from hardcoded mapping
+      if (deptTitle && DEPARTMENT_TO_DESIGNATIONS[deptTitle]) {
+        const designationsList = DEPARTMENT_TO_DESIGNATIONS[deptTitle].map((title, idx) => ({
+          id: `desig-${deptTitle}-${idx}`,
+          title: title
+        }));
+        setDesignations(designationsList);
+      } else {
+        setDesignations([]);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDepartment]);
 
   
-
+  
 //   To fetch the details of particular employee using employee
   const [employeeDetailsData, setEmployeeDetailsData] = useState({})
   const {employeeId} = useParams()
@@ -251,8 +276,8 @@ const EditEmployee = () => {
                 }
             });
             console.log("Employee Details:", response.data)
+            console.log("Documents:", response.data.documents)
             setEmployeeDetailsData(response.data)
-
         }
     } catch (error) {
         console.log("Error fetching employee details:", error)
@@ -494,7 +519,7 @@ const EditEmployee = () => {
       const accessToken = getToken("accessToken");
       if (accessToken) {
         const response = await axios.put(
-          `${BASE_API_URL}/peoples/employee/${employeeId}/`,
+          `${BASE_API_URL}/peoples/employees/${employeeId}/`,
           formData,
           {
             headers: {
@@ -583,11 +608,6 @@ const EditEmployee = () => {
 
       //   USe Effect to fetch some data
       useEffect(() => {
-        // To fetch departments
-        fetchDepartments();
-        // To fetch designations
-        fetchDesignations();
-    
         // To fetch employee details
         fetchEmployeeDetailsData();
       }, []);
@@ -847,9 +867,9 @@ const EditEmployee = () => {
                           required: "This field is required.",
                         })}
                       />
-                      {errors.department && (
+                      {errors.department_id && (
                         <small className="text-red-600">
-                          {errors.department.message}
+                          {errors.department_id.message}
                         </small>
                       )}
                     </Grid2>
@@ -857,13 +877,25 @@ const EditEmployee = () => {
                       <SelectDesignation
                         label={"Designation"}
                         options={designations}
+                        disabled={!selectedDepartment}
                         {...register("designation_id", {
                           required: "This field is required.",
+                          validate: (value) => {
+                            if (!selectedDepartment && value) {
+                              return "Please select a department first";
+                            }
+                            return true;
+                          },
                         })}
                       />
-                      {errors.department && (
+                      {!selectedDepartment && (
+                        <small className="text-gray-500">
+                          Please select a department first
+                        </small>
+                      )}
+                      {errors.designation_id && (
                         <small className="text-red-600">
-                          {errors.department.message}
+                          {errors.designation_id.message}
                         </small>
                       )}
                     </Grid2>
@@ -1246,7 +1278,7 @@ const EditEmployee = () => {
                     errors={errors}
                     allowedFileTypes={["application/pdf"]}
                     allowedFileTypesErrorMessage={"Only pdf is allowed."}
-                    defaultFileUrl={employeeDetailsData && employeeDetailsData.documents?.pan_card}
+                    defaultFileUrl={employeeDetailsData && employeeDetailsData.documents?.resume}
                   />
                 </Grid2>
 
@@ -1385,7 +1417,7 @@ const EditEmployee = () => {
 
               <div className="mt-4 flex gap-3 flex-wrap justify-end">
                 <CloseBtn to={"/employee"}>Close</CloseBtn>
-                <PrimaryBtn type={"submit"}>Submit</PrimaryBtn>
+                <PrimaryBtn type={"submit"}>Update</PrimaryBtn>
               </div>
             </div>
           </form>

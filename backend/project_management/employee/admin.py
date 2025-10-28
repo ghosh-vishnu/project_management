@@ -1,17 +1,5 @@
 from django.contrib import admin
-from .models import Department, Designation, Address, BankDetails, Documents, Employee
-
-
-@admin.register(Department)
-class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ['title', 'description', 'created_at']
-    search_fields = ['title']
-
-
-@admin.register(Designation)
-class DesignationAdmin(admin.ModelAdmin):
-    list_display = ['title', 'description', 'created_at']
-    search_fields = ['title']
+from .models import Address, BankDetails, Documents, Employee
 
 
 @admin.register(Address)
@@ -35,7 +23,7 @@ class DocumentsAdmin(admin.ModelAdmin):
 class EmployeeAdmin(admin.ModelAdmin):
     list_display = ['name', 'email', 'contact_no', 'department', 'designation', 'is_active', 'created_at']
     list_filter = ['is_active', 'department', 'designation']
-    search_fields = ['name', 'contact_no', 'pan_no', 'aadhar_no']
+    search_fields = ['name', 'contact_no', 'pan_no', 'aadhar_no', 'department', 'designation']
     readonly_fields = ['created_at', 'updated_at']
     
     fieldsets = (

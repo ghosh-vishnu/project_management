@@ -18,18 +18,19 @@ import BASE_API_URL from "../../data";
 import ErrorAlert from "../../components/Alert/ErrorAlert";
 import SuccessAlert from "../../components/Alert/SuccessAlert";
 import { getToken } from "../../Token";
-// Fallback options in case API is empty/unavailable
-const FALLBACK_DEPARTMENTS = [
-  { id: 101, title: "Project Management" },
-  { id: 102, title: "Development" },
-  { id: 103, title: "Design" },
-  { id: 104, title: "Quality Assurance" },
-  { id: 105, title: "Human Resources" },
-  { id: 106, title: "Sales & Marketing" },
-  { id: 107, title: "Finance & Accounts" },
-  { id: 108, title: "Support & Operations" },
-  { id: 109, title: "IT Infrastructure" },
-  { id: 110, title: "Research & Innovation" },
+
+// Hardcoded departments and designations
+const HARDCODED_DEPARTMENTS = [
+  { id: 1, title: "Project Management" },
+  { id: 2, title: "Development" },
+  { id: 3, title: "Design" },
+  { id: 4, title: "Quality Assurance" },
+  { id: 5, title: "Human Resources" },
+  { id: 6, title: "Sales & Marketing" },
+  { id: 7, title: "Finance & Accounts" },
+  { id: 8, title: "Support & Operations" },
+  { id: 9, title: "IT Infrastructure" },
+  { id: 10, title: "Research & Innovation" },
 ];
 
 const DEPARTMENT_TO_DESIGNATIONS = {
@@ -39,14 +40,14 @@ const DEPARTMENT_TO_DESIGNATIONS = {
     "Project Coordinator",
     "Project Analyst",
   ],
-  Development: [
+  "Development": [
     "Full Stack Developer",
     "Backend Developer (Python/Django)",
     "Frontend Developer (React/Angular)",
     "Software Engineer",
     "Intern Developer",
   ],
-  Design: [
+  "Design": [
     "UI/UX Designer",
     "Graphic Designer",
     "Frontend Designer",
@@ -90,10 +91,6 @@ const DEPARTMENT_TO_DESIGNATIONS = {
     "Data Analyst",
   ],
 };
-
-const FALLBACK_DESIGNATIONS_ALL = Object.values(DEPARTMENT_TO_DESIGNATIONS)
-  .flat()
-  .map((title, idx) => ({ id: `fd-${idx}`, title }));
 
 // Select dropdown for gender
 const SelectOthers = React.forwardRef(
@@ -235,111 +232,35 @@ const AddEmployee = () => {
     mode: "onChange",
   });
 
-  // Fetching the data of Departments
-  const [departments, setDepartments] = useState([]);
-  const fetchDepartments = async () => {
-    try {
-      const accessToken = getToken("accessToken");
-      if (accessToken) {
-        const response = await axios.get(
-          `${BASE_API_URL}/peoples/departments/`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-        const apiDepartments = Array.isArray(response.data) ? response.data : [];
-        // If API returns empty, fallback to local seed list
-        if (apiDepartments.length > 0) {
-          setDepartments(apiDepartments);
-        } else {
-          setDepartments(FALLBACK_DEPARTMENTS);
-        }
-      }
-    } catch (error) {
-      // On error, use fallback departments so the user can proceed
-      setDepartments(FALLBACK_DEPARTMENTS);
-    }
-  };
-
-  // Fetching the data of Designations
+  // Fetching the data of Departments - Using hardcoded data
+  const [departments, setDepartments] = useState(HARDCODED_DEPARTMENTS);
   const [designations, setDesignations] = useState([]);
-  const fetchDesignations = async () => {
-    try {
-      const accessToken = getToken("accessToken");
-      if (accessToken) {
-        const response = await axios.get(
-          `${BASE_API_URL}/peoples/designations/`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-        const apiDesignations = Array.isArray(response.data) ? response.data : [];
-        if (apiDesignations.length > 0) {
-          setDesignations(apiDesignations);
-        } else {
-          // If API returns empty, show all fallback designations
-          setDesignations(FALLBACK_DESIGNATIONS_ALL);
-        }
-      }
-    } catch (error) {
-      // Fallback to static list on error
-      setDesignations(FALLBACK_DESIGNATIONS_ALL);
-    }
-  };
-
-  useEffect(() => {
-    fetchDepartments();
-    fetchDesignations();
-  }, []);
-
-  // Fetch filtered designations based on department
-  const fetchDesignationsForDepartment = async (departmentId) => {
-    try {
-      const accessToken = getToken("accessToken");
-      if (accessToken && departmentId) {
-        const response = await axios.get(
-          `${BASE_API_URL}/peoples/designations/?department_id=${departmentId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-        const apiDesignations = Array.isArray(response.data) ? response.data : [];
-        if (apiDesignations.length > 0) {
-          setDesignations(apiDesignations);
-        } else {
-          // Fallback: map departmentId to title from local list and filter
-          const dept = (departments || []).find((d) => String(d.id) === String(departmentId));
-          const deptTitle = dept ? dept.title : "";
-          const fallback = (DEPARTMENT_TO_DESIGNATIONS[deptTitle] || []).map((title, idx) => ({ id: `fd-${departmentId}-${idx}`, title }));
-          setDesignations(fallback);
-        }
-      }
-    } catch (error) {
-      // Fallback to static mapping on error
-      const dept = (departments || []).find((d) => String(d.id) === String(departmentId));
-      const deptTitle = dept ? dept.title : "";
-      const fallback = (DEPARTMENT_TO_DESIGNATIONS[deptTitle] || []).map((title, idx) => ({ id: `fe-${departmentId}-${idx}`, title }));
-      setDesignations(fallback);
-    }
-  };
 
   // Watch department_id to filter designations
   const selectedDepartment = watch("department_id");
   
-  // Fetch designations when department changes
+  // Get designations based on selected department using hardcoded mapping
   useEffect(() => {
     if (selectedDepartment) {
-      fetchDesignationsForDepartment(selectedDepartment);
+      // Get department title from hardcoded list
+      const dept = departments.find((d) => String(d.id) === String(selectedDepartment));
+      const deptTitle = dept ? dept.title : "";
+      
+      // Get designations from hardcoded mapping
+      if (deptTitle && DEPARTMENT_TO_DESIGNATIONS[deptTitle]) {
+        const designationsList = DEPARTMENT_TO_DESIGNATIONS[deptTitle].map((title, idx) => ({
+          id: `desig-${deptTitle}-${idx}`,
+          title: title
+        }));
+        setDesignations(designationsList);
+      } else {
+        setDesignations([]);
+      }
+      
       // Clear designation when department changes
       setValue("designation_id", "");
     } else {
-      fetchDesignations();
+      setDesignations([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDepartment]);
@@ -565,8 +486,15 @@ const AddEmployee = () => {
         if (response.status == 201) {
           setShowMessage("Employee added successfully.");
           setShowSuccess(true);
+          
+          // Clear file inputs and reset form
+          const fileInputs = document.querySelectorAll('input[type="file"]');
+          fileInputs.forEach(input => {
+            input.value = '';
+          });
+          
           // To reset the form
-          reset()
+          reset();
         }
       }
     } catch (error) {
@@ -853,16 +781,15 @@ const AddEmployee = () => {
                     <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
                       <SelectDepartment
                         label={"Department"}
-                        // options={["IT", "HR", "MANAGEMENT"]}
                         selectOption={"Department"}
                         options={departments}
                         {...register("department_id", {
                           required: "This field is required.",
                         })}
                       />
-                      {errors.department && (
+                      {errors.department_id && (
                         <small className="text-red-600">
-                          {errors.department.message}
+                          {errors.department_id.message}
                         </small>
                       )}
                     </Grid2>
@@ -870,6 +797,7 @@ const AddEmployee = () => {
                       <SelectDesignation
                         label={"Designation"}
                         options={designations}
+                        disabled={!selectedDepartment}
                         {...register("designation_id", {
                           required: "This field is required.",
                           validate: (value) => {
@@ -879,16 +807,15 @@ const AddEmployee = () => {
                             return true;
                           },
                         })}
-                        disabled={!selectedDepartment}
                       />
                       {!selectedDepartment && (
                         <small className="text-gray-500">
                           Please select a department first
                         </small>
                       )}
-                      {errors.department_id && (
+                      {errors.designation_id && (
                         <small className="text-red-600">
-                          {errors.department_id.message}
+                          {errors.designation_id.message}
                         </small>
                       )}
                     </Grid2>

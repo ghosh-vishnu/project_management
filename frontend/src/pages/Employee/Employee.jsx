@@ -31,6 +31,7 @@ import { useForm } from "react-hook-form";
 import { EMAIL_REGEX, PASSWORD_REGEX, PHONE_REGEX } from "../../utils";
 import PrimaryBtn from "../../components/Buttons/PrimaryBtn";
 import { getToken } from "../../Token";
+import jsPDF from "jspdf";
 
 const Employee = () => {
   // Helper function to mask account number
@@ -86,7 +87,7 @@ const Employee = () => {
     if (fullDetails) {
       setEmployeeDetailsData(fullDetails);
     } else {
-      setEmployeeDetailsData(data);
+    setEmployeeDetailsData(data);
     }
     
     setShowAccountNumber(false); // Reset mask when opening new employee
@@ -117,6 +118,7 @@ const Employee = () => {
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [showInactive, setShowInactive] = useState(false);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -131,7 +133,7 @@ const Employee = () => {
   const [employeeData, setEmployeeData] = useState([]);
 
   // To fetch the employee data list
-  const getEmployeeData = async (pageNumber, pageSize) => {
+  const getEmployeeData = async (pageNumber, pageSize, showInactiveEmployees = false) => {
     try {
       const accessToken = getToken("accessToken");
       const response = await axios.get(`${BASE_API_URL}/peoples/employees/`, {
@@ -141,6 +143,7 @@ const Employee = () => {
         params: {
           page: pageNumber + 1, // API might be 1-indexed, but TablePagination is 0-indexed
           page_size: pageSize,
+          show_inactive: showInactiveEmployees,
         },
       });
       setEmployeeData(response.data.results);
@@ -168,8 +171,8 @@ const Employee = () => {
 
   // Use Effect
   useEffect(() => {
-    getEmployeeData(page, rowsPerPage);
-  }, [page, rowsPerPage]);
+    getEmployeeData(page, rowsPerPage, showInactive);
+  }, [page, rowsPerPage, showInactive]);
 
   const {
     register,
@@ -211,16 +214,16 @@ const Employee = () => {
           }
         );
 
-        if (response.status == 204) {
-          getEmployeeData(page, rowsPerPage);
+        if (response.status == 200 || response.status == 204) {
+          getEmployeeData(page, rowsPerPage, showInactive);
           setShowSuccess(true);
-          setShowMessage(" deleted successfully.");
+          setShowMessage("Employee deactivated successfully.");
           handleDeleteClose();
         }
       }
     } catch (error) {
       setShowError(true);
-      setShowMessage(" doesn't deleted.");
+      setShowMessage("Failed to deactivate employee.");
     }
   };
   return (
@@ -249,7 +252,17 @@ const Employee = () => {
         <div>
           <h4 className="text-2xl font-bold">Employee Management</h4>
         </div>
-        <div>
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => setShowInactive(!showInactive)}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              showInactive
+                ? 'bg-orange-600 text-white hover:bg-orange-700'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            {showInactive ? '👁️ Hide Inactive' : '👁️ Show Inactive'}
+          </button>
           <Link to={"/employee/add"}>
             <PrimaryBtn onClick={handleOpen}>
               <AddIcon /> Add Employee
@@ -328,7 +341,7 @@ const Employee = () => {
       {/* Delete Employee Modal */}
       <ModalComp open={deleteOpen} onClose={handleDeleteClose}>
         <div className="w-full ">
-          <div>Do you wand to delete ?</div>
+          <div>Do you want to deactivate this employee? They will not be able to login, but their data will be preserved.</div>
           <div className="flex mt-8 justify-end gap-4">
             <CloseBtn
               onClick={handleDeleteClose}
@@ -336,7 +349,7 @@ const Employee = () => {
             >
               Close
             </CloseBtn>
-            <DeleteBtn onClick={deleteData}>Delete</DeleteBtn>
+            <DeleteBtn onClick={deleteData}>Deactivate</DeleteBtn>
           </div>
         </div>
       </ModalComp>
@@ -568,8 +581,8 @@ const Employee = () => {
                                 >
                                   View →
                                 </button>
-                              </div>
-                            </div>
+                          </div>
+                          </div>
                           )}
                           
                           {employeeDetailsData.documents?.resume && (
@@ -582,8 +595,8 @@ const Employee = () => {
                                 >
                                   View →
                                 </button>
-                              </div>
-                            </div>
+                          </div>
+                        </div>
                           )}
                           
                           {employeeDetailsData.documents?.aadhar_card && (
@@ -596,8 +609,8 @@ const Employee = () => {
                                 >
                                   View →
                                 </button>
-                              </div>
-                            </div>
+                          </div>
+                        </div>
                           )}
                           
                           {employeeDetailsData.documents?.pan_card && (
@@ -610,7 +623,7 @@ const Employee = () => {
                                 >
                                   View →
                                 </button>
-                              </div>
+                          </div>
                             </div>
                           )}
                         </div>
@@ -942,13 +955,117 @@ const Employee = () => {
                       <Grid2 size={8}>
                         <div className="text-gray-600">{employeeDetailsData.bank_details?.branch}</div>
                       </Grid2>
-                        </Grid2>
+                    </Grid2>
                       </div>
                     )}
                   </div>
 
                 </Grid2>
               </Grid2>
+            </div>
+            
+            {/* Download and Print Buttons */}
+            <div className="mt-6 flex gap-3 justify-end border-t pt-4">
+              <button
+                onClick={() => {
+                  // Generate PDF using jsPDF
+                  const doc = new jsPDF();
+                  
+                  // Set title
+                  doc.setFontSize(18);
+                  doc.setTextColor(0, 0, 255);
+                  doc.text('Employee Details', 105, 20, { align: 'center' });
+                  
+                  // Personal Information
+                  doc.setFontSize(14);
+                  doc.setTextColor(0, 0, 0);
+                  doc.text('Personal Information', 14, 35);
+                  
+                  let yPos = 45;
+                  doc.setFontSize(11);
+                  doc.text(`Name: ${employeeDetailsData.name || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Email: ${employeeDetailsData.user?.email || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Contact: ${employeeDetailsData.contact_no || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Alternate Contact: ${employeeDetailsData.alternate_contact_no || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Father Name: ${employeeDetailsData.father_name || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Gender: ${employeeDetailsData.gender || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`PAN Card: ${employeeDetailsData.pan_no || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Aadhar Card: ${employeeDetailsData.aadhar_no || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`DOB: ${employeeDetailsData.dob || 'N/A'}`, 14, yPos);
+                  yPos += 10;
+                  
+                  // Employment Details
+                  doc.setFontSize(14);
+                  doc.text('Employment Details', 14, yPos);
+                  yPos += 10;
+                  doc.setFontSize(11);
+                  doc.text(`Department: ${employeeDetailsData.department?.title || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Designation: ${employeeDetailsData.designation?.title || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Joining Date: ${employeeDetailsData.joining_date || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Status: ${employeeDetailsData.user?.is_active ? 'Active' : 'Inactive'}`, 14, yPos);
+                  yPos += 10;
+                  
+                  // Current Address
+                  doc.setFontSize(14);
+                  doc.text('Current Address', 14, yPos);
+                  yPos += 10;
+                  doc.setFontSize(11);
+                  const currentAddress = `${employeeDetailsData.current_address?.address || 'N/A'}, ${employeeDetailsData.current_address?.city || 'N/A'}, ${employeeDetailsData.current_address?.state || 'N/A'} - ${employeeDetailsData.current_address?.pincode || 'N/A'}`;
+                  doc.text(currentAddress, 14, yPos);
+                  yPos += 10;
+                  
+                  // Permanent Address
+                  doc.setFontSize(14);
+                  doc.text('Permanent Address', 14, yPos);
+                  yPos += 10;
+                  doc.setFontSize(11);
+                  const permanentAddress = `${employeeDetailsData.permanent_address?.address || 'N/A'}, ${employeeDetailsData.permanent_address?.city || 'N/A'}, ${employeeDetailsData.permanent_address?.state || 'N/A'} - ${employeeDetailsData.permanent_address?.pincode || 'N/A'}`;
+                  doc.text(permanentAddress, 14, yPos);
+                  yPos += 10;
+                  
+                  // Bank Details
+                  doc.setFontSize(14);
+                  doc.text('Bank Details', 14, yPos);
+                  yPos += 10;
+                  doc.setFontSize(11);
+                  doc.text(`Account Holder: ${employeeDetailsData.bank_details?.account_holder_name || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Bank Name: ${employeeDetailsData.bank_details?.bank_name || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Account Number: ${employeeDetailsData.bank_details?.account_number || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`IFSC Code: ${employeeDetailsData.bank_details?.ifsc_code || 'N/A'}`, 14, yPos);
+                  yPos += 7;
+                  doc.text(`Branch: ${employeeDetailsData.bank_details?.branch || 'N/A'}`, 14, yPos);
+                  
+                  // Save PDF
+                  doc.save(`employee-${employeeDetailsData.name}-details.pdf`);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                📥 Download PDF
+              </button>
+              
+              <button
+                onClick={() => {
+                  // Print employee details
+                  window.print();
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+              >
+                🖨️ Print
+              </button>
             </div>
           </div>
         )}

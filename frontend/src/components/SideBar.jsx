@@ -20,6 +20,7 @@ import SupportAgentIcon from "@mui/icons-material/SupportAgent";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import CircleNotificationsIcon from "@mui/icons-material/CircleNotifications";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import SearchIcon from "@mui/icons-material/Search";
 
 import { Link, useLocation, useNavigate } from "react-router";
 import LoadingBar from "react-top-loading-bar";
@@ -61,6 +62,7 @@ export default function Sidebar({ children }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showMessage, setShowMessage] = useState("");
 
+
   // Redirect to login page if user is not logged in
   const redirectToLogin = () => {
     if (!localStorage.getItem('accessToken')) {
@@ -95,6 +97,7 @@ export default function Sidebar({ children }) {
 
     return () => clearTimeout(timer);
   }, [location.pathname]);
+
 
   // Avatar/Profile Handle Menu
   const [anchorEl, setAnchorEl] = useState(null);
@@ -139,39 +142,120 @@ export default function Sidebar({ children }) {
       <SuccessAlert message={showMessage} show={showSuccess} onClose={() => setShowSuccess(false)} />
 
       <LoadingBar color="#282C6C" height={3} ref={loadingBar} />
-      {/* Header */}
-      <div className="flex justify-between items-center px-8 py-2 h-[5rem] bg-white w-full border-b border-gray-400 shadow-[10px_10px_50px_5px] shadow-gray-300">
-        <div className="flex gap-x-8">
+      {/* Header - Advanced Futuristic Design */}
+      <div className="flex justify-between items-center px-6 lg:px-8 py-3 h-[5rem] bg-gradient-to-r from-slate-900 via-indigo-900 to-blue-900 w-full border-b border-cyan-500/30 shadow-xl shadow-cyan-500/10 relative overflow-hidden">
+        
+        {/* Animated background gradient */}
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-cyan-500/5 to-purple-500/5 animate-pulse"></div>
+        
+        {/* Animated shimmer effect */}
+        <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-cyan-500/10 to-transparent animate-shimmer"></div>
+        
+        {/* Floating particles */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute rounded-full bg-cyan-400/20 animate-float"
+              style={{
+                width: `${4 + Math.random() * 8}px`,
+                height: `${4 + Math.random() * 8}px`,
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 3}s`,
+                animationDuration: `${3 + Math.random() * 4}s`,
+              }}
+            />
+          ))}
+        </div>
+        
+        <div className="relative flex gap-x-6 items-center z-10">
           {/* Menu Button */}
           <button
-            className=" cursor-pointer  text-gray-900"
+            className="cursor-pointer text-white hover:text-cyan-400 transition-colors duration-200 p-2 rounded-lg hover:bg-white/10"
             onClick={() => setIsOpen(!isOpen)}
           >
-            <MenuOpenIcon />
+            <MenuOpenIcon sx={{ fontSize: 28 }} />
           </button>
-          <div className="w-[7rem]">
-            <img
-              className="w-full object-contain "
-              src={logo}
-              loading="true"
-              alt="Logo"
-            />
+          
+          {/* Logo Section */}
+          <div className="flex items-center gap-3 group relative">
+            {/* Circular V Icon with animated glow */}
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-cyan-400 blur-lg opacity-0 group-hover:opacity-50 transition-opacity duration-300"></div>
+              <div className="relative w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/50 group-hover:scale-110 transition-transform duration-300">
+                <span className="text-white font-bold text-xl">V</span>
+              </div>
+            </div>
+            
+            {/* Logo Text */}
+            <div className="flex flex-col">
+              <span className="text-white font-bold text-xl tracking-tight group-hover:text-cyan-300 transition-colors duration-300">VED</span>
+              <span className="text-cyan-300 text-xs font-medium tracking-widest opacity-90 group-hover:opacity-100 transition-opacity duration-300">VENTURING -DIGITALLY-</span>
+            </div>
           </div>
         </div>
+        
+        {/* Right Section - Search, Notifications & User */}
+        <div className="relative flex items-center gap-3 z-10">
         {isAccessToken ? (
-          <div className="">
+          <>
+            {/* Search Bar */}
+            <div className="hidden lg:flex items-center relative">
+              <input
+                type="text"
+                placeholder="Quick search..."
+                className="bg-white/10 border border-cyan-500/30 rounded-lg px-4 py-2 pr-10 text-white placeholder-white/50 focus:outline-none focus:border-cyan-500/50 focus:bg-white/15 transition-all duration-200 text-sm w-64"
+              />
+              <SearchIcon 
+                sx={{ 
+                  position: 'absolute', 
+                  right: 12, 
+                  color: 'rgba(255,255,255,0.5)',
+                  fontSize: 20 
+                }} 
+              />
+            </div>
+            
+            {/* Notifications Bell Icon */}
+            <Tooltip title="Notifications">
+              <IconButton
+                className="relative hover:bg-white/10 transition-all duration-200 text-white hover:text-cyan-400"
+              >
+                <CircleNotificationsIcon sx={{ fontSize: 26 }} />
+                {/* Notification Badge */}
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-900 animate-pulse"></span>
+              </IconButton>
+            </Tooltip>
+            
+            {/* User Avatar */}
+            <div className="relative">
             <Tooltip title="Account settings">
               <IconButton
                 onClick={handleClick}
                 size="small"
-                sx={{ ml: 2 }}
-                aria-controls={open ? "account-menu" : undefined}
-                aria-haspopup="true"
-                aria-expanded={open ? "true" : undefined}
+                className="hover:bg-white/10 transition-all duration-200 group"
               >
-                <Avatar sx={{ width: 32, height: 32 }}>M</Avatar>
+                <Avatar 
+                  sx={{ 
+                    width: 36, 
+                    height: 36,
+                    background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+                    fontWeight: 'bold',
+                    border: '2px solid rgba(6, 182, 212, 0.5)',
+                    boxShadow: '0 0 15px rgba(6, 182, 212, 0.3)',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'scale(1.1)',
+                      boxShadow: '0 0 25px rgba(6, 182, 212, 0.6)'
+                    }
+                  }}
+                >
+                  {localStorage.getItem('username')?.charAt(0).toUpperCase() || 'M'}
+                </Avatar>
               </IconButton>
             </Tooltip>
+            </div>
             <Menu
               anchorEl={anchorEl}
               id="account-menu"
@@ -183,8 +267,12 @@ export default function Sidebar({ children }) {
                   elevation: 0,
                   sx: {
                     overflow: "visible",
-                    filter: "drop-shadow(0px 2px 8px rgba(0,0,0,0.32))",
+                    filter: "drop-shadow(0px 4px 20px rgba(6, 182, 212, 0.3))",
                     mt: 1.5,
+                    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(6, 182, 212, 0.3)',
+                    borderRadius: '12px',
                     "& .MuiAvatar-root": {
                       width: 32,
                       height: 32,
@@ -199,9 +287,11 @@ export default function Sidebar({ children }) {
                       right: 14,
                       width: 10,
                       height: 10,
-                      bgcolor: "background.paper",
+                      background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
                       transform: "translateY(-50%) rotate(45deg)",
                       zIndex: 0,
+                      borderLeft: '1px solid rgba(6, 182, 212, 0.3)',
+                      borderTop: '1px solid rgba(6, 182, 212, 0.3)',
                     },
                   },
                 },
@@ -209,31 +299,74 @@ export default function Sidebar({ children }) {
               transformOrigin={{ horizontal: "right", vertical: "top" }}
               anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
             >
-              <MenuItem onClick={handleClose}>
-                <Link to={'/profile'} className="flex items-center w-full">  <Avatar /> Profile</Link>
-
+              <MenuItem 
+                onClick={handleClose}
+                sx={{
+                  color: '#ffffff',
+                  '&:hover': {
+                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                    color: '#06b6d4'
+                  }
+                }}
+              >
+                <Link to={'/profile'} className="flex items-center w-full text-white hover:text-cyan-400 transition-colors duration-200">  
+                  <Avatar 
+                    sx={{ 
+                      width: 28, 
+                      height: 28,
+                      background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    {localStorage.getItem('username')?.charAt(0).toUpperCase() || 'M'}
+                  </Avatar>
+                  <span className="ml-2">Profile</span>
+                </Link>
               </MenuItem>
-              <Divider />
+              <Divider sx={{ borderColor: 'rgba(6, 182, 212, 0.2)' }} />
 
-              <MenuItem onClick={handleClose}>
-                <Link className="flex items-center" to="/ResetPassword">
-                  <ListItemIcon >
-                    <LockResetIcon />
+              <MenuItem 
+                onClick={handleClose}
+                sx={{
+                  color: '#ffffff',
+                  '&:hover': {
+                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                    color: '#06b6d4'
+                  }
+                }}
+              >
+                <Link className="flex items-center text-white hover:text-cyan-400 transition-colors duration-200" to="/ResetPassword">
+                  <ListItemIcon>
+                    <LockResetIcon sx={{ color: 'inherit' }} />
                   </ListItemIcon>
                   Reset Password
                 </Link>
               </MenuItem>
-              <MenuItem onClick={handleLogout}>
-                <Link className="flex items-center">
+              <MenuItem 
+                onClick={handleLogout}
+                sx={{
+                  color: '#ffffff',
+                  '&:hover': {
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    color: '#ef4444'
+                  }
+                }}
+              >
+                <Link className="flex items-center text-white hover:text-red-400 transition-colors duration-200">
                   <ListItemIcon>
-                    <Logout fontSize="small" />
+                    <Logout fontSize="small" sx={{ color: 'inherit' }} />
                   </ListItemIcon>
                   Logout
                 </Link>
               </MenuItem>
             </Menu>
+          </>
+        ) : (
+          <button className="px-5 py-2 rounded-lg cursor-pointer transition-all duration-200 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-semibold flex items-center gap-2 shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50">
+            <Link to={"/login"}>Login</Link>
+          </button>
+        )}
           </div>
-        ) : (<button className={'px-4 py-2 rounded-[5px] cursor-pointer transition-all hover:shadow-[2px_2px_5px] hover:shadow-gray-400 bg-[var(--primary1)] hover:bg-[var(--primary2)] text-white flex items-center gap-2 '}><Link to={"/login"}>Login</Link></button>)}
 
       </div>
       {/* Sidebar */}
@@ -243,7 +376,7 @@ export default function Sidebar({ children }) {
             className={`absolute left-0 lg:static z-10 h-full   transition-transform transform  ${isOpen ? "translate-x-0 w-full lg:w-[16rem]" : "-translate-x-[20rem]"} w-0`}
           >
             <div
-              className={` overflow-y-scroll no-scrollbar h-full  w-full sm:w-[16rem]  bg-[var(--primary1)] text-white p-5 translate-[visibility]`}
+              className={` overflow-y-scroll no-scrollbar h-full  w-full sm:w-[16rem] bg-gradient-to-b from-slate-900 via-indigo-900 to-blue-900 text-white p-5 translate-[visibility] border-r border-cyan-500/20`}
             >
               {/* <h2 className="text-2xl font-bold mb-5">Sidebar</h2> */}
               <ul className="space-y-4">

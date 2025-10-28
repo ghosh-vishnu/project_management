@@ -13,8 +13,9 @@ class Department(models.Model):
 
 
 class Designation(models.Model):
-    title = models.CharField(max_length=200, unique=True)
+    title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='designations', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -84,9 +85,9 @@ class Employee(models.Model):
     basic_salary = models.DecimalField(max_digits=10, decimal_places=2)
     is_active = models.BooleanField(default=True)
     
-    # Foreign Keys
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
-    designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, null=True, blank=True)
+    # Department and Designation - Simple text fields
+    department = models.CharField(max_length=200, blank=True, null=True)
+    designation = models.CharField(max_length=200, blank=True, null=True)
     
     # Related Models
     current_address = models.OneToOneField(Address, on_delete=models.CASCADE, related_name='current_employee', null=True, blank=True)

@@ -1,18 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Department, Designation, Address, BankDetails, Documents, Employee
-
-
-class DepartmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Department
-        fields = '__all__'
-
-
-class DesignationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Designation
-        fields = '__all__'
+from .models import Address, BankDetails, Documents, Employee
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -77,8 +65,6 @@ class UserSerializer(serializers.ModelSerializer):
 
 class EmployeeListSerializer(serializers.ModelSerializer):
     """Serializer for listing employees with basic info"""
-    department = DepartmentSerializer(read_only=True)
-    designation = DesignationSerializer(read_only=True)
     email = serializers.SerializerMethodField()
     user = serializers.SerializerMethodField()
     
@@ -105,8 +91,6 @@ class EmployeeListSerializer(serializers.ModelSerializer):
 
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for employee with all related data"""
-    department = DepartmentSerializer(read_only=True)
-    designation = DesignationSerializer(read_only=True)
     current_address = AddressSerializer(read_only=True)
     permanent_address = AddressSerializer(read_only=True)
     bank_details = BankDetailsSerializer(read_only=True)
@@ -134,8 +118,6 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
 
 class EmployeeCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating employees"""
-    department_id = serializers.IntegerField(write_only=True)
-    designation_id = serializers.IntegerField(write_only=True)
     current_address = AddressSerializer()
     permanent_address = AddressSerializer()
     bank_details = BankDetailsSerializer()
@@ -145,7 +127,7 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         model = Employee
         fields = ['name', 'father_name', 'contact_no', 'alternate_contact_no', 'gender',
                   'pan_no', 'aadhar_no', 'dob', 'joining_date', 'basic_salary', 'is_active',
-                  'department_id', 'designation_id', 'current_address', 'permanent_address',
+                  'department', 'designation', 'current_address', 'permanent_address',
                   'bank_details', 'documents']
     
     def create(self, validated_data):
@@ -155,23 +137,14 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         bank_details_data = validated_data.pop('bank_details')
         documents_data = validated_data.pop('documents')
         
-        department_id = validated_data.pop('department_id')
-        designation_id = validated_data.pop('designation_id')
-        
-        # Get department and designation
-        department = Department.objects.get(id=department_id)
-        designation = Designation.objects.get(id=designation_id)
-        
         # Create nested objects
         current_address = Address.objects.create(**current_address_data, address_type='current')
         permanent_address = Address.objects.create(**permanent_address_data, address_type='permanent')
         bank_details = BankDetails.objects.create(**bank_details_data)
         documents = Documents.objects.create(**documents_data)
         
-        # Create employee
+        # Create employee with department and designation as strings
         employee = Employee.objects.create(
-            department=department,
-            designation=designation,
             current_address=current_address,
             permanent_address=permanent_address,
             bank_details=bank_details,
