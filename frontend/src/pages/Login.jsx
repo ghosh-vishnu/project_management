@@ -55,7 +55,7 @@ const Login = () => {
       
       // Quick navigation after brief success display
       setTimeout(() => {
-        navigate('/')
+      navigate('/')
       }, 400)
       
     }

@@ -8,8 +8,11 @@ from .models import Employee
 from .serializers import (
     EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer
 )
+from .resume_parser import parse_resume
 import random
 import string
+import os
+import tempfile
 
 
 def generate_random_password(length=8):
@@ -346,3 +349,63 @@ def employee_detail(request, pk):
             return Response({
                 'error': f'Failed to deactivate employee: {exc}'
             }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def parse_resume_api(request):
+    """
+    Upload and parse a resume (PDF/DOCX) to extract candidate information.
+    
+    Returns JSON with extracted fields for auto-filling employee form.
+    """
+    try:
+        if 'resume' not in request.FILES:
+            return Response({
+                'error': 'No resume file uploaded'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        uploaded_file = request.FILES['resume']
+        
+        # Validate file type
+        if not uploaded_file.name.endswith(('.pdf', '.docx', '.doc')):
+            return Response({
+                'error': 'Invalid file type. Only PDF, DOCX, and DOC files are allowed.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{uploaded_file.name}") as tmp_file:
+            for chunk in uploaded_file.chunks():
+                tmp_file.write(chunk)
+            tmp_file_path = tmp_file.name
+        
+        try:
+            # Parse the resume
+            result = parse_resume(tmp_file_path)
+            
+            # Clean up temporary file
+            os.unlink(tmp_file_path)
+            
+            return Response(result, status=status.HTTP_200_OK)
+        
+        except Exception as parse_error:
+            # Clean up in case of error
+            if os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
+            
+            return Response({
+                'error': f'Error parsing resume: {str(parse_error)}',
+                "EmployeeName": None, "FathersName": None, "Email": None,
+                "ContactNumber": None, "AlternateContact": None,
+                "Gender": None, "PAN": None, "Aadhaar": None, "DOB": None,
+                "confidences": {}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Exception as e:
+        return Response({
+            'error': f'Unexpected error: {str(e)}',
+            "EmployeeName": None, "FathersName": None, "Email": None,
+            "ContactNumber": None, "AlternateContact": None,
+            "Gender": None, "PAN": None, "Aadhaar": None, "DOB": None,
+            "confidences": {}
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

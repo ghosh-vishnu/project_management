@@ -11,5 +11,8 @@ urlpatterns = [
     
     # Employee names for dropdowns
     path('employees-name/', views.employee_names_list, name='employee-names'),
+    
+    # Resume parsing
+    path('parse-resume/', views.parse_resume_api, name='parse-resume'),
 ]
 

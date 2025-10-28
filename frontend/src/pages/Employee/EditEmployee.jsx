@@ -814,16 +814,32 @@ const EditEmployee = () => {
                         PAN Card Number <span className="text-red-600">*</span>
                       </label>
                       <input
-                        placeholder="Employee's PAN Number"
+                        placeholder="Employee's PAN Number (e.g., ABCDE1234F)"
                         type="text"
                         id="employeePan"
+                        maxLength={10}
+                        style={{ textTransform: 'uppercase' }}
                         {...register("pan_no", {
                           required: "This field is required.",
                           minLength: {
-                            value: 4,
-                            message: "Length should be more than 4.",
+                            value: 10,
+                            message: "PAN must be exactly 10 characters.",
+                          },
+                          maxLength: {
+                            value: 10,
+                            message: "PAN must be exactly 10 characters.",
+                          },
+                          pattern: {
+                            value: /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/,
+                            message: "Invalid PAN format. Must be like ABCDE1234F (5 letters + 4 digits + 1 letter).",
                           },
                         })}
+                        onChange={(e) => {
+                          // Auto-uppercase the input
+                          e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                          // Trigger onChange from register
+                          register("pan_no").onChange(e);
+                        }}
                       />
                       {errors.pan_no && (
                         <small className="text-red-600">
