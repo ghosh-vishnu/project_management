@@ -33,6 +33,14 @@ import PrimaryBtn from "../../components/Buttons/PrimaryBtn";
 import { getToken } from "../../Token";
 
 const Employee = () => {
+  // Helper function to mask account number
+  const maskAccountNumber = (accountNumber) => {
+    if (!accountNumber) return '';
+    if (accountNumber.length <= 4) return '****';
+    const last4 = accountNumber.slice(-4);
+    return `****${last4}`;
+  };
+  
   const [open, setOpen] = useState(false);
   const [team, setTeam] = useState([]);
   const handleOpen = () => {
@@ -62,10 +70,31 @@ const Employee = () => {
   };
 
   const [employeeDetailsData, setEmployeeDetailsData] = useState({});
+  const [showAccountNumber, setShowAccountNumber] = useState(false);
+  
+  // Collapsible sections state
+  const [showDocuments, setShowDocuments] = useState(false);
+  const [showCurrentAddress, setShowCurrentAddress] = useState(false);
+  const [showPermanentAddress, setShowPermanentAddress] = useState(false);
+  const [showBankDetails, setShowBankDetails] = useState(false);
+  
   // View Modal open and close
   const [viewOpen, setViewOpen] = useState(false);
-  const handleViewOpen = (data) => {
-    setEmployeeDetailsData(data);
+  const handleViewOpen = async (data) => {
+    // Fetch full details from API
+    const fullDetails = await fetchEmployeeDetails(data.id);
+    if (fullDetails) {
+      setEmployeeDetailsData(fullDetails);
+    } else {
+      setEmployeeDetailsData(data);
+    }
+    
+    setShowAccountNumber(false); // Reset mask when opening new employee
+    // Reset all collapsible sections
+    setShowDocuments(false);
+    setShowCurrentAddress(false);
+    setShowPermanentAddress(false);
+    setShowBankDetails(false);
     // console.log(data);
     setViewOpen(true);
   };
@@ -105,7 +134,7 @@ const Employee = () => {
   const getEmployeeData = async (pageNumber, pageSize) => {
     try {
       const accessToken = getToken("accessToken");
-      const response = await axios.get(`${BASE_API_URL}/peoples/employee/`, {
+      const response = await axios.get(`${BASE_API_URL}/peoples/employees/`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -116,7 +145,25 @@ const Employee = () => {
       });
       setEmployeeData(response.data.results);
       setCount(response.data.count);
-    } catch (error) {}
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+    }
+  };
+  
+  // Fetch detailed employee data for view modal
+  const fetchEmployeeDetails = async (employeeId) => {
+    try {
+      const accessToken = getToken("accessToken");
+      const response = await axios.get(`${BASE_API_URL}/peoples/employees/${employeeId}/`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching employee details:", error);
+      return null;
+    }
   };
 
   // Use Effect
@@ -156,7 +203,7 @@ const Employee = () => {
 
       if (accessToken && employeeId) {
         const response = await axios.delete(
-          `${BASE_API_URL}/peoples/employee/${employeeId}/`,
+          `${BASE_API_URL}/peoples/employees/${employeeId}/`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -227,12 +274,18 @@ const Employee = () => {
                   loading="true"
                 />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="font-semibold">{data.name}</p>
                 <p className="text-sm text-gray-500">
-                  {data.user.email} — {data.user.user_type}
+                  {data.email || data.user?.email} — {data.designation?.title || 'Employee'}
                 </p>
-                <div className="flex gap-2 mt-1">{data.phone}</div>
+                <div className="flex gap-4 mt-1 text-sm">
+                  <span>📞 {data.contact_no}</span>
+                  <span>Joined: {new Date(data.joining_date).toLocaleDateString('en-IN')}</span>
+                  <span className={`font-semibold ${data.is_active ? 'text-green-600' : 'text-red-600'}`}>
+                    {data.is_active ? '✓ Active' : '✗ Inactive'}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="flex gap-1">
@@ -438,7 +491,7 @@ const Employee = () => {
                         <div className="font-bold">Department</div>
                       </Grid2>
                       <Grid2 size={8}>
-                        <div>{employeeDetailsData.department?.name}</div>
+                        <div>{employeeDetailsData.department?.title}</div>
                       </Grid2>
                     </Grid2>
 
@@ -493,60 +546,73 @@ const Employee = () => {
                     </Grid2>
                   </div>
 
-                  <div className="mt-4 border border-gray-500 rounded-[.5rem] ">
-                    <div className="font-bold text-[1.1rem] text-[var(--primary1)] border-b px-4 py-2 border-gray-500">
-                      Documents
+                  {/* Documents Section - Enhanced UI */}
+                  <div className="mt-4 border border-gray-300 rounded-lg shadow-sm bg-gradient-to-br from-blue-50 to-indigo-50">
+                    <div 
+                      className="font-bold text-lg text-blue-700 bg-blue-100 px-4 py-3 border-b border-blue-200 flex items-center justify-between cursor-pointer hover:bg-blue-200 transition-colors"
+                      onClick={() => setShowDocuments(!showDocuments)}
+                    >
+                      <span className="flex items-center gap-2">📄 Documents</span>
+                      <span className="text-xs font-normal">{showDocuments ? '▼' : '▶'}</span>
                     </div>
-                    {employeeDetailsData.documents && (
-                      <div>
-                        <div className="flex flex-wrap gap-x-6 items-center gap-y-4 border-b px-4 py-2 border-gray-500">
-                          <div className="font-bold w-[15rem] ">
-                            Higher Education Certificate
-                          </div>
-
-                          <div className="w-[10rem]">
-                            <iframe
-                              src={
-                                employeeDetailsData.documents
-                                  ?.higher_education_certificate
-                              }
-                              className="w-full h-30 border rounded-md"
-                              frameBorder={0}
-                            ></iframe>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-x-6 gap-y-4 border-b px-4 py-2 border-gray-500">
-                          <div className="font-bold w-[15rem]">Resume</div>
-
-                          <div className="w-[10rem]">
-                            <iframe
-                              src={employeeDetailsData.documents?.resume}
-                              className="w-full h-30 border rounded-md"
-                            ></iframe>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-x-6 gap-y-4 border-b px-4 py-2 border-gray-500">
-                          <div className="font-bold w-[15rem]">Aadhar Card</div>
-
-                          <div className="w-[10rem]">
-                            <iframe
-                              src={employeeDetailsData.documents?.aadhar_card}
-                              className="w-full h-30 border rounded-md"
-                            ></iframe>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-x-6 gap-y-4 border-0 px-4 py-2 border-gray-500">
-                          <div className="font-bold w-[15rem]">PAN Card</div>
-
-                          <div className="w-[10rem]">
-                            <iframe
-                              src={employeeDetailsData.documents?.pan_card}
-                              className="w-full h-30 border rounded-md"
-                            ></iframe>
-                          </div>
+                    {showDocuments && employeeDetailsData.documents && (
+                      <div className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {employeeDetailsData.documents?.higher_education_certificate && (
+                            <div className="bg-white p-4 rounded-lg border border-blue-200 hover:shadow-md transition-shadow">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-semibold text-gray-700">📜 Higher Education Certificate</span>
+                                <button 
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                  onClick={() => window.open(employeeDetailsData.documents?.higher_education_certificate, '_blank')}
+                                >
+                                  View →
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {employeeDetailsData.documents?.resume && (
+                            <div className="bg-white p-4 rounded-lg border border-blue-200 hover:shadow-md transition-shadow">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-semibold text-gray-700">📑 Resume</span>
+                                <button 
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                  onClick={() => window.open(employeeDetailsData.documents?.resume, '_blank')}
+                                >
+                                  View →
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {employeeDetailsData.documents?.aadhar_card && (
+                            <div className="bg-white p-4 rounded-lg border border-blue-200 hover:shadow-md transition-shadow">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-semibold text-gray-700">🆔 Aadhar Card</span>
+                                <button 
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                  onClick={() => window.open(employeeDetailsData.documents?.aadhar_card, '_blank')}
+                                >
+                                  View →
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {employeeDetailsData.documents?.pan_card && (
+                            <div className="bg-white p-4 rounded-lg border border-blue-200 hover:shadow-md transition-shadow">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-semibold text-gray-700">🪪 PAN Card</span>
+                                <button 
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                  onClick={() => window.open(employeeDetailsData.documents?.pan_card, '_blank')}
+                                >
+                                  View →
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -554,22 +620,50 @@ const Employee = () => {
                 </Grid2>
 
                 <Grid2 size={{xs:12, md:6}}>
-                  <div className="border border-gray-500 rounded-[.5rem] ">
-                    <div className="font-bold text-[1.1rem] text-[var(--primary1)] border-b px-4 py-2 border-gray-500">
-                      Current Address
+                  {/* Current Address - Enhanced UI */}
+                  <div className="border border-gray-300 rounded-lg shadow-sm bg-gradient-to-br from-green-50 to-emerald-50">
+                    <div 
+                      className="font-bold text-lg text-green-700 bg-green-100 px-4 py-3 border-b border-green-200 flex items-center justify-between cursor-pointer hover:bg-green-200 transition-colors"
+                      onClick={() => setShowCurrentAddress(!showCurrentAddress)}
+                    >
+                      <span className="flex items-center gap-2">📍 Current Address</span>
+                      <span className="text-xs font-normal">{showCurrentAddress ? '▼' : '▶'}</span>
                     </div>
-                    {employeeDetailsData.current_address && (
+                    {showCurrentAddress && employeeDetailsData.current_address && (
                       <div>
+                        <div className="px-4 py-2 flex gap-2 bg-white border-b border-green-200">
+                          <button 
+                            className="text-xs text-green-600 hover:text-green-800 font-medium bg-white px-2 py-1 rounded border border-green-300"
+                            onClick={() => {
+                              const addr = employeeDetailsData.current_address;
+                              const address = `${addr.address}, ${addr.city}, ${addr.state} ${addr.pincode}, ${addr.country}`;
+                              navigator.clipboard.writeText(address);
+                              alert('Address copied to clipboard!');
+                            }}
+                          >
+                            📋 Copy
+                          </button>
+                          <button 
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium bg-white px-2 py-1 rounded border border-blue-300"
+                            onClick={() => {
+                              const addr = employeeDetailsData.current_address;
+                              const address = `${addr.address}, ${addr.city}, ${addr.state} ${addr.pincode}, ${addr.country}`;
+                              window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`, '_blank');
+                            }}
+                          >
+                            🗺️ View Map
+                          </button>
+                        </div>
                         <Grid2
                           container
                           spacing={2}
-                          className="border-b px-4 py-2 border-gray-500"
+                          className="border-b px-4 py-2 border-green-200"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">Address</div>
+                            <div className="font-bold text-gray-700">Address</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>
+                            <div className="text-gray-600">
                               {employeeDetailsData.current_address?.address}
                             </div>
                           </Grid2>
@@ -578,13 +672,13 @@ const Employee = () => {
                         <Grid2
                           container
                           spacing={2}
-                          className="border-b px-4 py-2 border-gray-500"
+                          className="border-b px-4 py-2 border-green-200"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">City</div>
+                            <div className="font-bold text-gray-700">City</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>
+                            <div className="text-gray-600">
                               {employeeDetailsData.current_address?.city}
                             </div>
                           </Grid2>
@@ -593,13 +687,13 @@ const Employee = () => {
                         <Grid2
                           container
                           spacing={2}
-                          className="border-b px-4 py-2 border-gray-500"
+                          className="border-b px-4 py-2 border-green-200"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">State</div>
+                            <div className="font-bold text-gray-700">State</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>
+                            <div className="text-gray-600">
                               {employeeDetailsData.current_address?.state}
                             </div>
                           </Grid2>
@@ -608,13 +702,13 @@ const Employee = () => {
                         <Grid2
                           container
                           spacing={2}
-                          className="border-b px-4 py-2 border-gray-500"
+                          className="border-b px-4 py-2 border-green-200"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">Pin code</div>
+                            <div className="font-bold text-gray-700">Pin code</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>
+                            <div className="text-gray-600">
                               {employeeDetailsData.current_address?.pincode}
                             </div>
                           </Grid2>
@@ -623,13 +717,13 @@ const Employee = () => {
                         <Grid2
                           container
                           spacing={2}
-                          className="border-0 px-4 py-2 border-gray-500"
+                          className="border-0 px-4 py-2"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">Country</div>
+                            <div className="font-bold text-gray-700">Country</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>
+                            <div className="text-gray-600">
                               {employeeDetailsData.current_address?.country}
                             </div>
                           </Grid2>
@@ -638,22 +732,50 @@ const Employee = () => {
                     )}
                   </div>
 
-                  <div className="mt-4 border border-gray-500 rounded-[.5rem] ">
-                    <div className="font-bold text-[1.1rem] text-[var(--primary1)] border-b px-4 py-2 border-gray-500">
-                      Permanent Address
+                  {/* Permanent Address - Enhanced UI */}
+                  <div className="mt-4 border border-gray-300 rounded-lg shadow-sm bg-gradient-to-br from-purple-50 to-pink-50">
+                    <div 
+                      className="font-bold text-lg text-purple-700 bg-purple-100 px-4 py-3 border-b border-purple-200 flex items-center justify-between cursor-pointer hover:bg-purple-200 transition-colors"
+                      onClick={() => setShowPermanentAddress(!showPermanentAddress)}
+                    >
+                      <span className="flex items-center gap-2">🏠 Permanent Address</span>
+                      <span className="text-xs font-normal">{showPermanentAddress ? '▼' : '▶'}</span>
                     </div>
-                    {employeeDetailsData.permanent_address && (
+                    {showPermanentAddress && employeeDetailsData.permanent_address && (
                       <div>
+                        <div className="px-4 py-2 flex gap-2 bg-white border-b border-purple-200">
+                          <button 
+                            className="text-xs text-purple-600 hover:text-purple-800 font-medium bg-white px-2 py-1 rounded border border-purple-300"
+                            onClick={() => {
+                              const addr = employeeDetailsData.permanent_address;
+                              const address = `${addr.address}, ${addr.city}, ${addr.state} ${addr.pincode}, ${addr.country}`;
+                              navigator.clipboard.writeText(address);
+                              alert('Address copied to clipboard!');
+                            }}
+                          >
+                            📋 Copy
+                          </button>
+                          <button 
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium bg-white px-2 py-1 rounded border border-blue-300"
+                            onClick={() => {
+                              const addr = employeeDetailsData.permanent_address;
+                              const address = `${addr.address}, ${addr.city}, ${addr.state} ${addr.pincode}, ${addr.country}`;
+                              window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`, '_blank');
+                            }}
+                          >
+                            🗺️ View Map
+                          </button>
+                        </div>
                         <Grid2
                           container
                           spacing={2}
-                          className="border-b px-4 py-2 border-gray-500"
+                          className="border-b px-4 py-2 border-purple-200"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">Address</div>
+                            <div className="font-bold text-gray-700">Address</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>
+                            <div className="text-gray-600">
                               {employeeDetailsData.permanent_address?.address}
                             </div>
                           </Grid2>
@@ -662,131 +784,169 @@ const Employee = () => {
                         <Grid2
                           container
                           spacing={2}
-                          className="border-b px-4 py-2 border-gray-500"
+                          className="border-b px-4 py-2 border-purple-200"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">City</div>
+                            <div className="font-bold text-gray-700">City</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>{employeeDetailsData.permanent_address?.city}</div>
+                            <div className="text-gray-600">{employeeDetailsData.permanent_address?.city}</div>
                           </Grid2>
                         </Grid2>
 
                         <Grid2
                           container
                           spacing={2}
-                          className="border-b px-4 py-2 border-gray-500"
+                          className="border-b px-4 py-2 border-purple-200"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">State</div>
+                            <div className="font-bold text-gray-700">State</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>{employeeDetailsData.permanent_address?.state}</div>
+                            <div className="text-gray-600">{employeeDetailsData.permanent_address?.state}</div>
                           </Grid2>
                         </Grid2>
 
                         <Grid2
                           container
                           spacing={2}
-                          className="border-b px-4 py-2 border-gray-500"
+                          className="border-b px-4 py-2 border-purple-200"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">Pin code</div>
+                            <div className="font-bold text-gray-700">Pin code</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>{employeeDetailsData.permanent_address?.pincode}</div>
+                            <div className="text-gray-600">{employeeDetailsData.permanent_address?.pincode}</div>
                           </Grid2>
                         </Grid2>
 
                         <Grid2
                           container
                           spacing={2}
-                          className="border-0 px-4 py-2 border-gray-500"
+                          className="border-0 px-4 py-2"
                         >
                           <Grid2 size={4}>
-                            <div className="font-bold">Country</div>
+                            <div className="font-bold text-gray-700">Country</div>
                           </Grid2>
                           <Grid2 size={8}>
-                            <div>{employeeDetailsData.permanent_address?.country}</div>
+                            <div className="text-gray-600">{employeeDetailsData.permanent_address?.country}</div>
                           </Grid2>
                         </Grid2>
                       </div>
                     )}
                   </div>
 
-                  <div className="mt-4 border border-gray-500 rounded-[.5rem] ">
-                    <div className="font-bold text-[1.1rem] text-[var(--primary1)] border-b px-4 py-2 border-gray-500">
-                      Bank Details
+                  {/* Bank Details - Enhanced UI with Masked Account */}
+                  <div className="mt-4 border border-gray-300 rounded-lg shadow-sm bg-gradient-to-br from-orange-50 to-amber-50">
+                    <div 
+                      className="font-bold text-lg text-orange-700 bg-orange-100 px-4 py-3 border-b border-orange-200 flex items-center justify-between cursor-pointer hover:bg-orange-200 transition-colors"
+                      onClick={() => setShowBankDetails(!showBankDetails)}
+                    >
+                      <span className="flex items-center gap-2">🏦 Bank Details</span>
+                      <span className="text-xs font-normal">{showBankDetails ? '▼' : '▶'}</span>
                     </div>
-                    {employeeDetailsData.bank_details && (
+                    {showBankDetails && employeeDetailsData.bank_details && (
                       <div>
                         <Grid2
                       container
                       spacing={2}
-                      className="border-b px-4 py-2 border-gray-500"
+                      className="border-b px-4 py-2 border-orange-200"
                     >
                       <Grid2 size={4}>
-                        <div className="font-bold">Account Holder Name</div>
+                        <div className="font-bold text-gray-700">Account Holder Name</div>
                       </Grid2>
                       <Grid2 size={8}>
-                        <div>{employeeDetailsData.bank_details?.account_holder_name}</div>
+                        <div className="text-gray-600">{employeeDetailsData.bank_details?.account_holder_name}</div>
                       </Grid2>
                     </Grid2>
 
                     <Grid2
                       container
                       spacing={2}
-                      className="border-b px-4 py-2 border-gray-500"
+                      className="border-b px-4 py-2 border-orange-200"
                     >
                       <Grid2 size={4}>
-                        <div className="font-bold">Bank Name</div>
+                        <div className="font-bold text-gray-700">Bank Name</div>
                       </Grid2>
                       <Grid2 size={8}>
-                        <div>{employeeDetailsData.bank_details?.bank_name}</div>
+                        <div className="text-gray-600">{employeeDetailsData.bank_details?.bank_name}</div>
                       </Grid2>
                     </Grid2>
 
                     <Grid2
                       container
                       spacing={2}
-                      className="border-b px-4 py-2 border-gray-500"
+                      className="border-b px-4 py-2 border-orange-200"
                     >
                       <Grid2 size={4}>
-                        <div className="font-bold">Account Number</div>
+                        <div className="font-bold text-gray-700">Account Number</div>
                       </Grid2>
                       <Grid2 size={8}>
-                        <div>{employeeDetailsData.bank_details?.account_number}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono">
+                            {showAccountNumber 
+                              ? employeeDetailsData.bank_details?.account_number 
+                              : maskAccountNumber(employeeDetailsData.bank_details?.account_number)}
+                          </span>
+                          <button
+                            onClick={() => setShowAccountNumber(!showAccountNumber)}
+                            className="text-xs text-orange-600 hover:text-orange-800 font-medium bg-white px-2 py-1 rounded border border-orange-300"
+                          >
+                            {showAccountNumber ? '👁️ Hide' : '👁️ Show'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(employeeDetailsData.bank_details?.account_number);
+                              alert('Account number copied!');
+                            }}
+                            className="text-xs text-orange-600 hover:text-orange-800 font-medium bg-white px-2 py-1 rounded border border-orange-300"
+                          >
+                            📋 Copy
+                          </button>
+                        </div>
                       </Grid2>
                     </Grid2>
 
                     <Grid2
                       container
                       spacing={2}
-                      className="border-b px-4 py-2 border-gray-500"
+                      className="border-b px-4 py-2 border-orange-200"
                     >
                       <Grid2 size={4}>
-                        <div className="font-bold">IFSC Code</div>
+                        <div className="font-bold text-gray-700">IFSC Code</div>
                       </Grid2>
                       <Grid2 size={8}>
-                        <div>{employeeDetailsData.bank_details?.ifsc_code}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-orange-600">{employeeDetailsData.bank_details?.ifsc_code}</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(employeeDetailsData.bank_details?.ifsc_code);
+                              alert('IFSC code copied!');
+                            }}
+                            className="text-xs text-orange-600 hover:text-orange-800 font-medium bg-white px-2 py-1 rounded border border-orange-300"
+                          >
+                            📋 Copy
+                          </button>
+                        </div>
                       </Grid2>
                     </Grid2>
 
                     <Grid2
                       container
                       spacing={2}
-                      className="border-0 px-4 py-2 border-gray-500"
+                      className="border-0 px-4 py-2"
                     >
                       <Grid2 size={4}>
-                        <div className="font-bold">Branch</div>
+                        <div className="font-bold text-gray-700">Branch</div>
                       </Grid2>
                       <Grid2 size={8}>
-                        <div>{employeeDetailsData.bank_details?.branch}</div>
+                        <div className="text-gray-600">{employeeDetailsData.bank_details?.branch}</div>
                       </Grid2>
-                    </Grid2>
+                        </Grid2>
                       </div>
                     )}
                   </div>
+
                 </Grid2>
               </Grid2>
             </div>

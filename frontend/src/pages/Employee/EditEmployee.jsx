@@ -82,8 +82,8 @@ const SelectDepartment = React.forwardRef(
         <option value="">Select {selectOption}</option>
         {options &&
           options.map((option, index) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
+            <option key={option.id ?? index} value={option.id}>
+              {option.title}
             </option>
           ))}
       </select>
@@ -199,6 +199,41 @@ const EditEmployee = () => {
       // console.log(error);
     }
   };
+  
+  // Fetch filtered designations based on department
+  const fetchDesignationsForDepartment = async (departmentId) => {
+    try {
+      const accessToken = getToken("accessToken");
+      if (accessToken && departmentId) {
+        const response = await axios.get(
+          `${BASE_API_URL}/peoples/designations/?department_id=${departmentId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+        setDesignations(response.data);
+      }
+    } catch (error) {
+      console.log("Error fetching designations:", error);
+    }
+  };
+
+  // Watch department_id to filter designations
+  const selectedDepartment = watch("department_id");
+  
+  // Fetch designations when department changes
+  useEffect(() => {
+    if (selectedDepartment) {
+      fetchDesignationsForDepartment(selectedDepartment);
+      // Clear designation when department changes (unless it's the initial load)
+      if (selectedDepartment !== getValues("designation_id")) {
+        setValue("designation_id", "");
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDepartment]);
 
   
 
@@ -210,17 +245,17 @@ const EditEmployee = () => {
         const accessToken = getToken("accessToken")
         
         if (accessToken && employeeId){
-            const response = await axios.get(`${BASE_API_URL}/peoples/employee/${employeeId}/`,{
+            const response = await axios.get(`${BASE_API_URL}/peoples/employees/${employeeId}/`,{
                 headers:{
                     Authorization: `Bearer ${accessToken}`
                 }
             });
-            console.log(response.data)
+            console.log("Employee Details:", response.data)
             setEmployeeDetailsData(response.data)
 
         }
     } catch (error) {
-        console.log(error)
+        console.log("Error fetching employee details:", error)
     }
   }
 

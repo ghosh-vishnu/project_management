@@ -98,3 +98,72 @@ def register_view(request):
         'email': user.email,
         'message': 'User registered successfully'
     }, status=status.HTTP_201_CREATED)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def reset_password_view(request):
+    """
+    User password reset endpoint
+    """
+    # Get authentication token from header
+    auth_header = request.headers.get('Authorization')
+    
+    if not auth_header or not auth_header.startswith('Token '):
+        # Fallback: allow user_id in request body for development
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response(
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+    else:
+        # Extract token and get user
+        token_key = auth_header.split(' ')[1]
+        try:
+            from rest_framework.authtoken.models import Token
+            token = Token.objects.get(key=token_key)
+            user_id = token.user.id
+        except Token.DoesNotExist:
+            return Response(
+                {"error": "Invalid authentication token"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+    
+    old_password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+    
+    if not old_password or not new_password:
+        return Response(
+            {"error": "Old password and new password are required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if len(new_password) < 6:
+        return Response(
+            {"error": "New password must be at least 6 characters long"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Verify old password
+        if not user.check_password(old_password):
+            return Response(
+                {"error": "Old password is incorrect"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Set new password
+        user.set_password(new_password)
+        user.save()
+        
+        return Response({
+            'message': 'Password has been reset successfully'
+        }, status=status.HTTP_200_OK)
+        
+    except User.DoesNotExist:
+        return Response(
+            {"error": "User not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )

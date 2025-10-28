@@ -18,6 +18,82 @@ import BASE_API_URL from "../../data";
 import ErrorAlert from "../../components/Alert/ErrorAlert";
 import SuccessAlert from "../../components/Alert/SuccessAlert";
 import { getToken } from "../../Token";
+// Fallback options in case API is empty/unavailable
+const FALLBACK_DEPARTMENTS = [
+  { id: 101, title: "Project Management" },
+  { id: 102, title: "Development" },
+  { id: 103, title: "Design" },
+  { id: 104, title: "Quality Assurance" },
+  { id: 105, title: "Human Resources" },
+  { id: 106, title: "Sales & Marketing" },
+  { id: 107, title: "Finance & Accounts" },
+  { id: 108, title: "Support & Operations" },
+  { id: 109, title: "IT Infrastructure" },
+  { id: 110, title: "Research & Innovation" },
+];
+
+const DEPARTMENT_TO_DESIGNATIONS = {
+  "Project Management": [
+    "Project Manager",
+    "Assistant Project Manager",
+    "Project Coordinator",
+    "Project Analyst",
+  ],
+  Development: [
+    "Full Stack Developer",
+    "Backend Developer (Python/Django)",
+    "Frontend Developer (React/Angular)",
+    "Software Engineer",
+    "Intern Developer",
+  ],
+  Design: [
+    "UI/UX Designer",
+    "Graphic Designer",
+    "Frontend Designer",
+    "Creative Lead",
+  ],
+  "Quality Assurance": [
+    "QA Engineer",
+    "QA Lead",
+    "Software Tester",
+    "Automation Tester",
+  ],
+  "Human Resources": [
+    "HR Manager",
+    "HR Executive",
+    "Talent Acquisition Specialist",
+  ],
+  "Sales & Marketing": [
+    "Business Development Executive",
+    "Sales Manager",
+    "Digital Marketing Executive",
+    "SEO Specialist",
+  ],
+  "Finance & Accounts": [
+    "Accounts Executive",
+    "Finance Officer",
+    "Billing & Payroll Executive",
+  ],
+  "Support & Operations": [
+    "Support Engineer",
+    "Technical Support Executive",
+    "Operations Manager",
+  ],
+  "IT Infrastructure": [
+    "System Administrator",
+    "Network Engineer",
+    "Cloud Administrator",
+  ],
+  "Research & Innovation": [
+    "R&D Specialist",
+    "Product Researcher",
+    "Data Analyst",
+  ],
+};
+
+const FALLBACK_DESIGNATIONS_ALL = Object.values(DEPARTMENT_TO_DESIGNATIONS)
+  .flat()
+  .map((title, idx) => ({ id: `fd-${idx}`, title }));
 
 // Select dropdown for gender
 const SelectOthers = React.forwardRef(
@@ -41,7 +117,7 @@ const SelectOthers = React.forwardRef(
 
 // Select dropdown for designation
 const SelectDesignation = React.forwardRef(
-  ({ onChange, onBlur, name, label, options = [] }, ref) => (
+  ({ onChange, onBlur, name, label, options = [], disabled = false }, ref) => (
     <>
       <label htmlFor="employeeDesignation">
         {label} <span className="text-red-600">*</span>{" "}
@@ -52,11 +128,12 @@ const SelectDesignation = React.forwardRef(
         ref={ref}
         onChange={onChange}
         onBlur={onBlur}
+        disabled={disabled}
       >
         <option value="">Select Designation</option>
         {options &&
           options.map((option, index) => (
-            <option key={option.id} value={option.id}>
+            <option key={option.id ?? index} value={option.id ?? index}>
               {option.title}
             </option>
           ))}
@@ -82,8 +159,8 @@ const SelectDepartment = React.forwardRef(
         <option value="">Select {selectOption}</option>
         {options &&
           options.map((option, index) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
+            <option key={option.id ?? index} value={option.id ?? index}>
+              {option.title}
             </option>
           ))}
       </select>
@@ -172,10 +249,17 @@ const AddEmployee = () => {
             },
           }
         );
-        setDepartments(response.data);
+        const apiDepartments = Array.isArray(response.data) ? response.data : [];
+        // If API returns empty, fallback to local seed list
+        if (apiDepartments.length > 0) {
+          setDepartments(apiDepartments);
+        } else {
+          setDepartments(FALLBACK_DEPARTMENTS);
+        }
       }
     } catch (error) {
-      console.log(error);
+      // On error, use fallback departments so the user can proceed
+      setDepartments(FALLBACK_DEPARTMENTS);
     }
   };
 
@@ -193,10 +277,17 @@ const AddEmployee = () => {
             },
           }
         );
-        setDesignations(response.data);
+        const apiDesignations = Array.isArray(response.data) ? response.data : [];
+        if (apiDesignations.length > 0) {
+          setDesignations(apiDesignations);
+        } else {
+          // If API returns empty, show all fallback designations
+          setDesignations(FALLBACK_DESIGNATIONS_ALL);
+        }
       }
     } catch (error) {
-      // console.log(error);
+      // Fallback to static list on error
+      setDesignations(FALLBACK_DESIGNATIONS_ALL);
     }
   };
 
@@ -204,6 +295,54 @@ const AddEmployee = () => {
     fetchDepartments();
     fetchDesignations();
   }, []);
+
+  // Fetch filtered designations based on department
+  const fetchDesignationsForDepartment = async (departmentId) => {
+    try {
+      const accessToken = getToken("accessToken");
+      if (accessToken && departmentId) {
+        const response = await axios.get(
+          `${BASE_API_URL}/peoples/designations/?department_id=${departmentId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+        const apiDesignations = Array.isArray(response.data) ? response.data : [];
+        if (apiDesignations.length > 0) {
+          setDesignations(apiDesignations);
+        } else {
+          // Fallback: map departmentId to title from local list and filter
+          const dept = (departments || []).find((d) => String(d.id) === String(departmentId));
+          const deptTitle = dept ? dept.title : "";
+          const fallback = (DEPARTMENT_TO_DESIGNATIONS[deptTitle] || []).map((title, idx) => ({ id: `fd-${departmentId}-${idx}`, title }));
+          setDesignations(fallback);
+        }
+      }
+    } catch (error) {
+      // Fallback to static mapping on error
+      const dept = (departments || []).find((d) => String(d.id) === String(departmentId));
+      const deptTitle = dept ? dept.title : "";
+      const fallback = (DEPARTMENT_TO_DESIGNATIONS[deptTitle] || []).map((title, idx) => ({ id: `fe-${departmentId}-${idx}`, title }));
+      setDesignations(fallback);
+    }
+  };
+
+  // Watch department_id to filter designations
+  const selectedDepartment = watch("department_id");
+  
+  // Fetch designations when department changes
+  useEffect(() => {
+    if (selectedDepartment) {
+      fetchDesignationsForDepartment(selectedDepartment);
+      // Clear designation when department changes
+      setValue("designation_id", "");
+    } else {
+      fetchDesignations();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDepartment]);
 
   // Same as current address variable
   const [sameAsCurrent, setSameAsCurrent] = useState(false);
@@ -733,11 +872,23 @@ const AddEmployee = () => {
                         options={designations}
                         {...register("designation_id", {
                           required: "This field is required.",
+                          validate: (value) => {
+                            if (!selectedDepartment && value) {
+                              return "Please select a department first";
+                            }
+                            return true;
+                          },
                         })}
+                        disabled={!selectedDepartment}
                       />
-                      {errors.department && (
+                      {!selectedDepartment && (
+                        <small className="text-gray-500">
+                          Please select a department first
+                        </small>
+                      )}
+                      {errors.department_id && (
                         <small className="text-red-600">
-                          {errors.department.message}
+                          {errors.department_id.message}
                         </small>
                       )}
                     </Grid2>
