@@ -101,6 +101,9 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = '__all__'
+        extra_kwargs = {
+            'is_active': {'write_only': False}  # Allow is_active to be written
+        }
     
     def get_user(self, obj):
         if obj.user:

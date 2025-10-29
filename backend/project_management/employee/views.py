@@ -299,6 +299,10 @@ def employee_detail(request, pk):
             else:
                 data[key] = value
         
+        # Handle is_active from user data
+        if 'user' in data and 'is_active' in data['user']:
+            data['is_active'] = str(data['user']['is_active']).lower() in ('true', '1', 'yes')
+        
         # Handle department and designation as strings
         if 'department_id' in data:
             department_mapping = {
@@ -332,8 +336,27 @@ def employee_detail(request, pk):
         # Use the parsed data for serialization
         serializer = EmployeeDetailSerializer(employee, data=data, partial=True, context={'request': request})
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            updated_employee = serializer.save()
+
+            # Keep Django User.is_active in sync with Employee.is_active
+            try:
+                # Prefer 'is_active' from request data if provided
+                incoming_is_active = data.get('is_active', None)
+                if incoming_is_active is not None:
+                    # Normalize truthy/falsey values
+                    user_active = str(incoming_is_active).lower() in ('true', '1', 'yes')
+                else:
+                    # Fallback to the model value just saved
+                    user_active = bool(getattr(updated_employee, 'is_active', True))
+
+                if updated_employee.user and updated_employee.user.is_active != user_active:
+                    updated_employee.user.is_active = user_active
+                    updated_employee.user.save(update_fields=['is_active'])
+            except Exception:
+                # Do not fail the request if syncing user flag encounters an issue
+                pass
+
+            return Response(EmployeeDetailSerializer(updated_employee, context={'request': request}).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     elif request.method == 'DELETE':
