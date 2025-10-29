@@ -232,13 +232,16 @@ def employee_list(request):
     page_size = int(request.GET.get('page_size', 25))
     show_inactive = request.GET.get('show_inactive', 'false').lower() == 'true'
     
+    # Build base queryset; only valid relations in select_related
+    base_qs = Employee.objects.select_related('user')
+
     # Filter based on show_inactive parameter
     if show_inactive:
         # Show all employees including inactive ones
-        employees = Employee.objects.select_related('user', 'department', 'designation').all()
+        employees = base_qs.all()
     else:
         # Show only active employees by default
-        employees = Employee.objects.select_related('user', 'department', 'designation').filter(is_active=True)
+        employees = base_qs.filter(is_active=True)
     
     paginator = Paginator(employees, page_size)
     page_obj = paginator.get_page(page)
