@@ -31,6 +31,7 @@ urlpatterns = [
     path('admin/', django_admin.site.urls),
     path('api/auth/', include('authentication.urls')),
     path('api/peoples/', include('employee.urls')),
+    path('api/peoples/', include('teams.urls')),  # Teams endpoints
     path('api/', include(api_urls)),
 ]
 
