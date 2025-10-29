@@ -14,5 +14,8 @@ urlpatterns = [
     
     # Resume parsing
     path('parse-resume/', views.parse_resume_api, name='parse-resume'),
+    
+    # Dashboard summary
+    path('dashboard-summary/', views.dashboard_summary, name='dashboard-summary'),
 ]
 

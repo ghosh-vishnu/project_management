@@ -351,6 +351,38 @@ def employee_detail(request, pk):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_summary(request):
+    """Get dashboard summary statistics"""
+    try:
+        # Count employees
+        total_employees = Employee.objects.count()
+        active_employees = Employee.objects.filter(is_active=True).count()
+        
+        # For now, return mock data for projects, tasks, clients
+        # These can be replaced with actual counts when those models are implemented
+        summary_data = {
+            'employees': total_employees,
+            'projects': 12,  # Mock data
+            'tasks': 45,      # Mock data  
+            'clients': 8,     # Mock data
+            'active_employees': active_employees,
+            'inactive_employees': total_employees - active_employees,
+        }
+        
+        return Response(summary_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error fetching dashboard summary: {str(e)}',
+            'employees': 0,
+            'projects': 0,
+            'tasks': 0,
+            'clients': 0,
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def parse_resume_api(request):
