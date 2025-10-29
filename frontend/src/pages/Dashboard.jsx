@@ -3,6 +3,7 @@ import axios from "axios";
 import BASE_API_URL from "../data";
 import { motion } from "framer-motion";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from "recharts";
+import { getToken } from "../Token";
 
 const Dashboard = () => {
   const [summary, setSummary] = useState({
@@ -48,9 +49,14 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchSummary = async () => {
       try {
-        const token = localStorage.getItem("accessToken");
+        const accessToken = getToken("accessToken");
+        if (!accessToken) {
+          console.error("No access token found. Please login again.");
+          return;
+        }
+        
         const response = await axios.get(`${BASE_API_URL}/peoples/dashboard-summary/`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
         setSummary(response.data);
         
@@ -61,6 +67,10 @@ const Dashboard = () => {
         animateCounter('pendingTasks', response.data.clients || 0);
       } catch (error) {
         console.error("Error fetching dashboard summary:", error);
+        // If 401 error, token might be expired
+        if (error.response?.status === 401) {
+          console.error("Authentication failed. Please login again.");
+        }
       }
     };
 
