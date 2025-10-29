@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 
 import { Breadcrumbs, Grid2, Typography } from "@mui/material";
 import CloseBtn from "../../components/Buttons/CloseBtn";
@@ -426,6 +426,33 @@ const AddEmployee = () => {
   const [permanentAddressSuggestions, setPermanentAddressSuggestions] = useState([]);
   const [showCurrentSuggestions, setShowCurrentSuggestions] = useState(false);
   const [showPermanentSuggestions, setShowPermanentSuggestions] = useState(false);
+
+  // Clears RHF values and all local UI states after a successful submission
+  const resetAfterSuccess = useCallback(() => {
+    // Reset form values and validation states
+    reset({}, { keepErrors: false, keepDirty: false, keepTouched: false, keepValues: false });
+
+    // Clear auxiliary UI states
+    setSameAsCurrent(false);
+    setParsedData(null);
+    setIsLoadingCurrentPin(false);
+    setIsLoadingPermanentPin(false);
+
+    setCurrentAddressSuggestions([]);
+    setPermanentAddressSuggestions([]);
+    setShowCurrentSuggestions(false);
+    setShowPermanentSuggestions(false);
+
+    // Clear dependent dropdown data
+    setDesignations([]);
+
+    // Also clear any file inputs left in the DOM
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    fileInputs.forEach((input) => {
+      // eslint-disable-next-line no-param-reassign
+      input.value = '';
+    });
+  }, [reset]);
   
   // Refs for dropdown containers
   const currentAddressRef = useRef(null);
@@ -807,15 +834,9 @@ const AddEmployee = () => {
         if (response.status == 201) {
           setShowMessage("Employee added successfully.");
           setShowSuccess(true);
-          
-          // Clear file inputs and reset form
-          const fileInputs = document.querySelectorAll('input[type="file"]');
-          fileInputs.forEach(input => {
-            input.value = '';
-          });
-          
-          // To reset the form
-          reset();
+
+          // Fully reset form and UI to allow adding another employee immediately
+          resetAfterSuccess();
         }
       }
     } catch (error) {
