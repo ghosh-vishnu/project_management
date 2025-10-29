@@ -189,6 +189,16 @@ def create_employee(request):
         else:
             desig_name = designation_name
         
+        # Prevent old format from being saved
+        if desig_name.startswith('desig-'):
+            # Extract correct designation from old format
+            parts = desig_name.split('-')
+            if len(parts) >= 3:
+                old_dept = parts[1]
+                old_index = parts[2]
+                if old_dept in designation_mapping and old_index in designation_mapping[old_dept]:
+                    desig_name = designation_mapping[old_dept][old_index]
+        
         # Create employee with proper value extraction
         employee = Employee.objects.create(
             user=user,
@@ -234,7 +244,7 @@ def employee_list(request):
     
     # Build base queryset; only valid relations in select_related
     base_qs = Employee.objects.select_related('user')
-
+    
     # Filter based on show_inactive parameter
     if show_inactive:
         # Show all employees including inactive ones
