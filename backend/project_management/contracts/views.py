@@ -3,25 +3,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from .models import Client
-from .serializers import ClientListSerializer, ClientCreateSerializer
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def client_names_list(request):
-    """Return minimal list of clients for dropdowns: [{id, name}]"""
-    try:
-        clients = Client.objects.only('id', 'name').filter(is_active=True)
-        data = [{'id': c.id, 'name': c.name} for c in clients]
-        return Response(data, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({'error': f'Failed to fetch client names: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+from .models import Contract
+from .serializers import ContractListSerializer, ContractCreateSerializer
 
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
-def client_list(request):
+def contract_list(request):
     if request.method == 'GET':
         try:
             raw_page = request.query_params.get('page', '1')
@@ -41,7 +29,7 @@ def client_list(request):
             if page_size > 200:
                 page_size = 200
 
-            queryset = Client.objects.select_related('user').all()
+            queryset = Contract.objects.select_related('lead_name').all()
             paginator = Paginator(queryset, page_size)
             try:
                 page_obj = paginator.page(page)
@@ -51,7 +39,7 @@ def client_list(request):
                 else:
                     page_obj = paginator.page(1)
 
-            serializer = ClientListSerializer(page_obj, many=True)
+            serializer = ContractListSerializer(page_obj, many=True)
             return Response({
                 'count': paginator.count,
                 'next': page_obj.next_page_number() if page_obj.has_next() else None,
@@ -59,47 +47,48 @@ def client_list(request):
                 'results': serializer.data
             }, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({'error': f'Failed to fetch clients: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': f'Failed to fetch contracts: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     try:
-        serializer = ClientCreateSerializer(data=request.data)
+        serializer = ContractCreateSerializer(data=request.data)
         if serializer.is_valid():
-            client = serializer.save()
-            return Response(ClientListSerializer(client).data, status=status.HTTP_201_CREATED)
+            contract = serializer.save()
+            return Response(ContractListSerializer(contract).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return Response({'error': f'Failed to create client: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': f'Failed to create contract: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
-def client_detail(request, pk: int):
+def contract_detail(request, pk: int):
     try:
-        client = Client.objects.select_related('user').get(pk=pk)
-    except Client.DoesNotExist:
-        return Response({'error': 'Client not found'}, status=status.HTTP_404_NOT_FOUND)
+        contract = Contract.objects.select_related('lead_name').get(pk=pk)
+    except Contract.DoesNotExist:
+        return Response({'error': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({'error': f'Error locating client: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': f'Error locating contract: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
     if request.method == 'GET':
         try:
-            return Response(ClientListSerializer(client).data, status=status.HTTP_200_OK)
+            return Response(ContractListSerializer(contract).data, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({'error': f'Failed to serialize client: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': f'Failed to serialize contract: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     if request.method == 'PUT':
         try:
-            serializer = ClientCreateSerializer(client, data=request.data, partial=True)
+            serializer = ContractCreateSerializer(contract, data=request.data, partial=True)
             if serializer.is_valid():
                 updated = serializer.save()
-                return Response(ClientListSerializer(updated).data, status=status.HTTP_200_OK)
+                return Response(ContractListSerializer(updated).data, status=status.HTTP_200_OK)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({'error': f'Failed to update client: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': f'Failed to update contract: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        client.delete()
-        return Response({'detail': 'Client deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+        contract.delete()
+        return Response({'detail': 'Contract deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
     except Exception as e:
-        return Response({'error': f'Failed to delete client: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': f'Failed to delete contract: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
 

@@ -47,6 +47,8 @@ INSTALLED_APPS = [
     'meeting_schedule',
     'leads',
     'proposal',
+    'contracts',
+    'clients',
 ]
 
 MIDDLEWARE = [

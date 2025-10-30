@@ -74,8 +74,10 @@ const Contracts = () => {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm();
+  const startDateWatch = watch("start_date");
 
 
   // Pagination variables
@@ -226,6 +228,16 @@ const getLeadNameData = async () =>{
   // Post API Call 
   const createContractForm = async (data) => {
     try {
+      // Client-side date validation
+      if (data?.start_date && data?.end_date) {
+        const s = new Date(data.start_date);
+        const e = new Date(data.end_date);
+        if (isFinite(s) && isFinite(e) && e < s) {
+          setShowError(true);
+          setShowMessage("End Date must be on or after Start Date.");
+          return;
+        }
+      }
       const accessToken = getToken("accessToken");
       const response = await axios.post(`${BASE_API_URL}/contracts/`, data, {
         headers: {
@@ -238,6 +250,7 @@ const getLeadNameData = async () =>{
         setShowMessage("contract created successfully.");
         reset();
         getContractsData(page, rowsPerPage);
+        handleCreatecontractsClose();
       } else {
         setShowError(true);
         setShowMessage("contract doesn't created.");
@@ -279,6 +292,16 @@ const getLeadNameData = async () =>{
   const editContractForm = async (data) => {
     
     try {
+      // Client-side date validation
+      if (data?.start_date && data?.end_date) {
+        const s = new Date(data.start_date);
+        const e = new Date(data.end_date);
+        if (isFinite(s) && isFinite(e) && e < s) {
+          setShowError(true);
+          setShowMessage("End Date must be on or after Start Date.");
+          return;
+        }
+      }
       const accessToken = getToken("accessToken");
       const contractId = localStorage.getItem("contractsId");
       if (accessToken && contractId){
@@ -292,6 +315,7 @@ const getLeadNameData = async () =>{
           getContractsData(page, rowsPerPage);
           setShowSuccess(true);
           setShowMessage("Contract edited successfully.");
+          handleEditContractsClose();
           
         } 
       }
@@ -531,6 +555,7 @@ const deleteContractData = async ()=>{
                       required: "This field id required."
                     })
                     }
+                    min={startDateWatch || undefined}
                   />
                   {errors.end_date && <small className="text-red-600">{errors.end_date.message}</small>}
                 </Grid2>

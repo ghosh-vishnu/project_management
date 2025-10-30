@@ -32,10 +32,13 @@ urlpatterns = [
     path('api/auth/', include('authentication.urls')),
     path('api/peoples/', include('employee.urls')),
     path('api/peoples/', include('teams.urls')),  # Teams endpoints
+    path('api/peoples/', include('clients.urls')),  # Clients endpoints
     path('api/peoples/', include('leads.urls')),  # Leads endpoints
     path('api/', include('meeting_schedule.urls')),  # Meetings endpoints
     path('api/', include('proposal.urls')),  # Proposals endpoints
+    path('api/', include('contracts.urls')),  # Contracts endpoints
     path('api/', include(api_urls)),
+    path('api/project/', include('projects.urls_compat')),  # Friendly endpoints matching frontend
 ]
 
 # Serve media files in development

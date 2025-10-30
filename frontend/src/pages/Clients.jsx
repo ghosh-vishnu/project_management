@@ -210,6 +210,7 @@ const Clients = () => {
         setShowMessage("Client added successfully.");
         getClientsData(page, rowsPerPage);
         reset();
+        handleCreateClientsClose();
       } else {
         setShowError(true);
         setShowMessage("Failed to add client.");
@@ -288,7 +289,7 @@ const Clients = () => {
           setShowSuccess(true);
           setShowMessage("Clients edited successfully.");
           getClientsData(page, rowsPerPage);
-          handleDeleteClientsClose();
+          handleEditClientsClose();
         }
       }
     } catch (error) {

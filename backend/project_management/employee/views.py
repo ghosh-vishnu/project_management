@@ -453,13 +453,26 @@ def dashboard_summary(request):
         total_employees = Employee.objects.count()
         active_employees = Employee.objects.filter(is_active=True).count()
         
-        # For now, return mock data for projects, tasks, clients
-        # These can be replaced with actual counts when those models are implemented
+        # Live counts for projects and clients
+        try:
+            from projects.models import Project
+            projects_count = Project.objects.count()
+        except Exception:
+            projects_count = 0
+        try:
+            from clients.models import Client
+            clients_count = Client.objects.count()
+        except Exception:
+            clients_count = 0
+
+        # Tasks app currently has no models; keep at 0
+        tasks_count = 0
+
         summary_data = {
             'employees': total_employees,
-            'projects': 12,  # Mock data
-            'tasks': 45,      # Mock data  
-            'clients': 8,     # Mock data
+            'projects': projects_count,
+            'tasks': tasks_count,
+            'clients': clients_count,
             'active_employees': active_employees,
             'inactive_employees': total_employees - active_employees,
         }

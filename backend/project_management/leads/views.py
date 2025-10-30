@@ -11,6 +11,18 @@ from .serializers import (
 )
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def lead_names_list(request):
+    """Return id and name for all leads for dropdowns."""
+    try:
+        leads = Lead.objects.all().only('id', 'name')
+        data = [{'id': l.id, 'name': l.name} for l in leads]
+        return Response(data, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': f'Failed to fetch lead names: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def lead_list(request):

@@ -79,6 +79,8 @@ const AllProposals = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showMessage, setShowMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   // Create submit using plain form handler (prevents page refresh)
   const handleCreateSubmit = async (e) => {
@@ -102,6 +104,16 @@ const AllProposals = () => {
       if (!payload.proposal_title || !payload.client_lead || !payload.proposal_date || !payload.valid_until || !payload.proposal_value) {
         setShowError(true);
         setShowMessage("Please fill all required fields.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Date ordering validation (end >= start)
+      const start = new Date(payload.proposal_date);
+      const end = new Date(payload.valid_until);
+      if (isFinite(start) && isFinite(end) && end < start) {
+        setShowError(true);
+        setShowMessage("End Date must be on or after Start Date.");
         setIsSubmitting(false);
         return;
       }
@@ -152,8 +164,14 @@ const AllProposals = () => {
 
   // Edit contract Modal
   const [editcontractsOpen, setEditcontractsOpen] = useState(false);
-
-  const handleEditcontractsOpen = () => {
+  const [editProposal, setEditProposal] = useState(null);
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editEndDate, setEditEndDate] = useState("");
+  const handleEditcontractsOpen = (row) => {
+    const payload = row || {};
+    setEditProposal(payload);
+    setEditStartDate(payload?.proposal_date || "");
+    setEditEndDate(payload?.valid_until || "");
     setEditcontractsOpen(true);
   };
   const handleEditcontractsClose = () => {
@@ -162,7 +180,9 @@ const AllProposals = () => {
 
   // Delete contract Modal
   const [deletecontractsOpen, setDeletecontractsOpen] = useState(false);
-  const handleDeletecontractsOpen = () => {
+  const [deleteProposalId, setDeleteProposalId] = useState(null);
+  const handleDeletecontractsOpen = (row) => {
+    setDeleteProposalId(row?.id || null);
     setDeletecontractsOpen(true);
   };
   const handleDeletecontractsClose = () => {
@@ -246,7 +266,7 @@ const AllProposals = () => {
                           <RemoveRedEyeIcon />
                         </IconButton>
                         <IconButton
-                          onClick={handleEditcontractsOpen}
+                          onClick={() => handleEditcontractsOpen(row)}
                           aria-label="edit"
                           color="warning"
                         >
@@ -254,7 +274,7 @@ const AllProposals = () => {
                         </IconButton>
 
                         <IconButton
-                          onClick={handleDeletecontractsOpen}
+                          onClick={() => handleDeletecontractsOpen(row)}
                           aria-label="delete"
                           color="error"
                         >
@@ -326,6 +346,8 @@ const AllProposals = () => {
                     placeholder="Start Date"
                     name="contractStartDate"
                     id="contractStartDate"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); if (endDate && new Date(endDate) < new Date(e.target.value)) { setEndDate(e.target.value); } }}
                   />
                   <small></small>
                 </Grid2>
@@ -339,6 +361,9 @@ const AllProposals = () => {
                     placeholder="End Date"
                     name="contractEndDate"
                     id="contractEndDate"
+                    value={endDate}
+                    min={startDate || undefined}
+                    onChange={(e) => setEndDate(e.target.value)}
                   />
                   <small></small>
                 </Grid2>
@@ -399,7 +424,44 @@ const AllProposals = () => {
           open={editcontractsOpen}
           onClose={handleEditcontractsClose}
         >
-          <form action="">
+          <form onSubmit={async (e) => {
+            try {
+              e.preventDefault();
+              if (!editProposal?.id) { setShowError(true); setShowMessage('Invalid proposal.'); return; }
+              const form = e.target;
+              const payload = {
+                proposal_title: form.contractName?.value || '',
+                client_lead: form.contractClientName?.value || '',
+                proposal_date: form.contractStartDate?.value || '',
+                valid_until: form.contractEndDate?.value || '',
+                proposal_value: form.contractBudget?.value?.toString() || '',
+                description: form.contractDescription?.value || '',
+                status: form.proposalStatus?.value || 'Pending',
+              };
+
+              // date order check
+              if (payload.valid_until && payload.proposal_date && new Date(payload.valid_until) < new Date(payload.proposal_date)) {
+                setShowError(true); setShowMessage('End Date must be on or after Start Date.'); return;
+              }
+
+              const accessToken = getToken('accessToken');
+              if (!accessToken) { setShowError(true); setShowMessage('Not authenticated.'); return; }
+
+              const response = await axios.put(`${BASE_API_URL}/proposals/${editProposal.id}/`, payload, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              });
+              if (response && response.status === 200) {
+                setShowSuccess(true); setShowMessage('Proposal updated successfully.');
+                setEditcontractsOpen(false);
+                getProposalsData(page, rowsPerPage);
+              } else {
+                setShowError(true); setShowMessage('Failed to update proposal.');
+              }
+            } catch (err) {
+              const apiMsg = err?.response?.data && typeof err.response.data === 'object' ? JSON.stringify(err.response.data) : (err?.message || 'Request failed');
+              setShowError(true); setShowMessage(apiMsg);
+            }
+          }}>
             <div className="mt-4 space-y-2">
               <Grid2 container spacing={2}>
                 <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
@@ -412,6 +474,7 @@ const AllProposals = () => {
                     type="text"
                     name="contractName"
                     id="contractName"
+                    defaultValue={editProposal?.proposal_title || ''}
                   />
                   <small></small>
                 </Grid2>
@@ -424,6 +487,7 @@ const AllProposals = () => {
                     placeholder="contract Email"
                     name="contractClientName"
                     id="contractClientName"
+                    defaultValue={editProposal?.client_lead || ''}
                   />
                   <small></small>
                 </Grid2>
@@ -440,6 +504,8 @@ const AllProposals = () => {
                     placeholder="Start Date"
                     name="contractStartDate"
                     id="contractStartDate"
+                    value={editStartDate}
+                    onChange={(e) => { setEditStartDate(e.target.value); if (editEndDate && new Date(editEndDate) < new Date(e.target.value)) { setEditEndDate(e.target.value); } }}
                   />
                   <small></small>
                 </Grid2>
@@ -453,6 +519,9 @@ const AllProposals = () => {
                     placeholder="End Date"
                     name="contractEndDate"
                     id="contractEndDate"
+                    value={editEndDate}
+                    min={editStartDate || undefined}
+                    onChange={(e) => setEditEndDate(e.target.value)}
                   />
                   <small></small>
                 </Grid2>
@@ -463,11 +532,11 @@ const AllProposals = () => {
                   <label htmlFor="contractStatus">
                     Status <span className="text-red-600">*</span>
                   </label>
-                  <select name="contractStatus" id="contractStatus">
+                  <select name="proposalStatus" id="proposalStatus" defaultValue={editProposal?.status || 'Pending'}>
                     <option value="">Select Status</option>
                     <option value="Pendig">Pendig</option>
-                    <option value="Pendig">Active</option>
-                    <option value="Pendig">Completed</option>
+                    <option value="Active">Active</option>
+                    <option value="Completed">Completed</option>
                     <option value="Cancelled">Cancelled</option>
                   </select>
                 </Grid2>
@@ -481,6 +550,7 @@ const AllProposals = () => {
                     placeholder="Contract Budget"
                     name="contractBudget"
                     id="contractBudget"
+                    defaultValue={editProposal?.proposal_value || ''}
                   />
                   <small></small>
                 </Grid2>
@@ -494,6 +564,7 @@ const AllProposals = () => {
                     name="contractDescription"
                     id="contractDescription"
                     placeholder="Contract Description"
+                    defaultValue={editProposal?.description || ''}
                   ></textarea>
                   <small></small>
                 </Grid2>
@@ -521,7 +592,29 @@ const AllProposals = () => {
               >
                 Close
               </CloseBtn>
-              <DeleteBtn>Delete</DeleteBtn>
+              <DeleteBtn onClick={async () => {
+                try {
+                  if (!deleteProposalId) { setShowError(true); setShowMessage('No proposal selected.'); return; }
+                  const accessToken = getToken('accessToken');
+                  if (!accessToken) { setShowError(true); setShowMessage('Not authenticated.'); return; }
+                  const response = await axios.delete(`${BASE_API_URL}/proposals/${deleteProposalId}/`, {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  });
+                  if (response && response.status === 204) {
+                    setShowSuccess(true); setShowMessage('Proposal deleted successfully.');
+                    setDeletecontractsOpen(false);
+                    setDeleteProposalId(null);
+                    // Refresh current page, adjust if last item removed
+                    const newPage = page;
+                    await getProposalsData(newPage, rowsPerPage);
+                  } else {
+                    setShowError(true); setShowMessage('Failed to delete proposal.');
+                  }
+                } catch (err) {
+                  const apiMsg = err?.response?.data && typeof err.response.data === 'object' ? JSON.stringify(err.response.data) : (err?.message || 'Request failed');
+                  setShowError(true); setShowMessage(apiMsg);
+                }
+              }}>Delete</DeleteBtn>
             </div>
           </div>
         </ModalComp>
