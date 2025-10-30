@@ -232,6 +232,20 @@ const EditEmployee = () => {
     mode: "onChange",
   });
 
+  // Helper functions to map names to IDs
+  const getDepartmentIdFromName = (departmentName) => {
+    if (!departmentName) return "";
+    const dept = HARDCODED_DEPARTMENTS.find(d => d.title === departmentName);
+    return dept ? dept.id : "";
+  };
+
+  const getDesignationIdFromName = (departmentName, designationName) => {
+    if (!departmentName || !designationName) return "";
+    const designations = DEPARTMENT_TO_DESIGNATIONS[departmentName] || [];
+    const index = designations.findIndex(d => d === designationName);
+    return index >= 0 ? index.toString() : "";
+  };
+
   // Fetching the data of Departments - Using hardcoded data
   const [departments, setDepartments] = useState(HARDCODED_DEPARTMENTS);
   const [designations, setDesignations] = useState([]);
@@ -249,7 +263,7 @@ const EditEmployee = () => {
       // Get designations from hardcoded mapping
       if (deptTitle && DEPARTMENT_TO_DESIGNATIONS[deptTitle]) {
         const designationsList = DEPARTMENT_TO_DESIGNATIONS[deptTitle].map((title, idx) => ({
-          id: `desig-${deptTitle}-${idx}`,
+          id: idx.toString(), // Send just the index number
           title: title
         }));
         setDesignations(designationsList);
@@ -261,7 +275,7 @@ const EditEmployee = () => {
   }, [selectedDepartment]);
 
   
-  
+
 //   To fetch the details of particular employee using employee
   const [employeeDetailsData, setEmployeeDetailsData] = useState({})
   const {employeeId} = useParams()
@@ -577,12 +591,13 @@ const EditEmployee = () => {
         gender : employeeDetailsData.gender || "", 
         pan_no: employeeDetailsData.pan_no || "",
         aadhar_no : employeeDetailsData.aadhar_no || "",
-        department_id : employeeDetailsData.department?.id || "",
-        designation_id : employeeDetailsData.designation?.id || "",
+        department_id : getDepartmentIdFromName(employeeDetailsData.department) || "",
+        designation_id : getDesignationIdFromName(employeeDetailsData.department, employeeDetailsData.designation) || "",
         dob : employeeDetailsData.dob || "",
         joining_date: employeeDetailsData.joining_date || "",
         basic_salary : employeeDetailsData.basic_salary || "",
-        is_active : employeeDetailsData.user?.is_active || "",
+        // Ensure select gets string values: "true"/"false"
+        is_active : (employeeDetailsData.is_active ?? employeeDetailsData.user?.is_active) ? "true" : "false",
         currentCountry :  employeeDetailsData.current_address?.country || "",
         currentState :  employeeDetailsData.current_address?.state || "",
         currentCity: employeeDetailsData.current_address?.city || "",
@@ -978,13 +993,16 @@ const EditEmployee = () => {
                           {errors.is_active.message}
                         </small>
                       )}
+                      <small className="text-gray-600 mt-1 block">
+                        💡 When activated, employee can login with their email and password
+                      </small>
                     </Grid2>
                   </Grid2>
 
                   <Grid2 container spacing={2}>
                     <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
                       <label htmlFor="employeePassword">
-                        Password 
+                        Password <span className="text-gray-500">(Leave blank to keep current)</span>
                       </label>
                       <input
                         type="password"
@@ -1007,7 +1025,7 @@ const EditEmployee = () => {
                     </Grid2>
                     <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
                       <label htmlFor="employeeCPassword">
-                        Confirm Password 
+                        Confirm Password <span className="text-gray-500">(Leave blank to keep current)</span>
                       </label>
                       <input
                         type="password"

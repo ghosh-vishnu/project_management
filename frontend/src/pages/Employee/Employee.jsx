@@ -131,11 +131,20 @@ const Employee = () => {
 
   // Employee data variable
   const [employeeData, setEmployeeData] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // To fetch the employee data list
   const getEmployeeData = async (pageNumber, pageSize, showInactiveEmployees = false) => {
     try {
+      setIsLoading(true);
       const accessToken = getToken("accessToken");
+      if (!accessToken) {
+        console.error("No access token found. Please login again.");
+        return;
+      }
+      
+      console.log("Fetching employees with params:", { page: pageNumber + 1, page_size: pageSize, show_inactive: showInactiveEmployees });
+      
       const response = await axios.get(`${BASE_API_URL}/peoples/employees/`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -146,10 +155,17 @@ const Employee = () => {
           show_inactive: showInactiveEmployees,
         },
       });
-      setEmployeeData(response.data.results);
-      setCount(response.data.count);
+      
+      console.log("Employee API response:", response.data);
+      setEmployeeData(response.data.results || []);
+      setCount(response.data.count || 0);
     } catch (error) {
       console.error("Error fetching employees:", error);
+      if (error.response?.status === 401) {
+        console.error("Authentication failed. Please login again.");
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -254,6 +270,13 @@ const Employee = () => {
         </div>
         <div className="flex gap-2 items-center">
           <button
+            onClick={() => getEmployeeData(page, rowsPerPage, showInactive)}
+            disabled={isLoading}
+            className="px-4 py-2 rounded-lg font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400"
+          >
+            {isLoading ? 'Loading...' : 'Refresh'}
+          </button>
+          <button
             onClick={() => setShowInactive(!showInactive)}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               showInactive
@@ -273,7 +296,19 @@ const Employee = () => {
 
       {/* Data list table */}
       <div className="bg-white mt-8 px-4 py-2 rounded-lg shadow-[2px_2px_5px_2px] shadow-gray-400">
-        {employeeData.map((data) => (
+        {isLoading ? (
+          <div className="text-center py-8">
+            <div className="text-lg font-semibold text-gray-600">Loading employees...</div>
+          </div>
+        ) : employeeData.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-lg font-semibold text-gray-600">No employees found</div>
+            <div className="text-sm text-gray-500 mt-2">
+              {showInactive ? "No inactive employees found" : "No active employees found. Try adding a new employee or show inactive employees."}
+            </div>
+          </div>
+        ) : (
+          employeeData.map((data) => (
           <div
             key={data.id}
             className="flex justify-between items-center border-b p-3"
@@ -290,7 +325,7 @@ const Employee = () => {
               <div className="flex-1">
                 <p className="font-semibold">{data.name}</p>
                 <p className="text-sm text-gray-500">
-                  {data.email || data.user?.email} — {data.designation?.title || 'Employee'}
+                  {data.email || data.user?.email} — {data.designation || 'Employee'}
                 </p>
                 <div className="flex gap-4 mt-1 text-sm">
                   <span>📞 {data.contact_no}</span>
@@ -324,7 +359,8 @@ const Employee = () => {
               </IconButton>
             </div>
           </div>
-        ))}
+          ))
+        )}
 
         {/* Pagination */}
         <TablePagination
@@ -504,7 +540,7 @@ const Employee = () => {
                         <div className="font-bold">Department</div>
                       </Grid2>
                       <Grid2 size={8}>
-                        <div>{employeeDetailsData.department?.title}</div>
+                        <div>{employeeDetailsData.department || 'N/A'}</div>
                       </Grid2>
                     </Grid2>
 
@@ -517,7 +553,7 @@ const Employee = () => {
                         <div className="font-bold">Designation</div>
                       </Grid2>
                       <Grid2 size={8}>
-                        <div>{employeeDetailsData.designation?.title}</div>
+                        <div>{employeeDetailsData.designation || 'N/A'}</div>
                       </Grid2>
                     </Grid2>
 

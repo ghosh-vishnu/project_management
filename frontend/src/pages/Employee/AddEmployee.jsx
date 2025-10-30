@@ -250,7 +250,7 @@ const AddEmployee = () => {
       // Get designations from hardcoded mapping
       if (deptTitle && DEPARTMENT_TO_DESIGNATIONS[deptTitle]) {
         const designationsList = DEPARTMENT_TO_DESIGNATIONS[deptTitle].map((title, idx) => ({
-          id: `desig-${deptTitle}-${idx}`,
+          id: idx.toString(), // Send just the index number
           title: title
         }));
         setDesignations(designationsList);

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import {
   Breadcrumbs,
@@ -23,16 +23,16 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteBtn from "../../components/Buttons/DeleteBtn";
 import ModalComp from "../../components/Modal/ModalComp";
+import axios from "axios";
+import BASE_API_URL from "../../data";
+import { getToken } from "../../Token";
+import ErrorAlert from "../../components/Alert/ErrorAlert";
+import SuccessAlert from "../../components/Alert/SuccessAlert";
 
 const AllProposals = () => {
-  const data = Array.from({ length: 50 }, (_, i) => ({
-    contractName: `contract ${i + 1}`,
-    email: `contract${i + 1}@gmail.com`,
-    assignTo: `Member ${i + 1}`,
-    contact: `123456789`,
-    contractsource: `Linkedin`,
-    status: `New`,
-  }));
+  // Backend data
+  const [proposalsData, setProposalsData] = useState([]);
+  const [count, setCount] = useState(0);
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
@@ -46,6 +46,98 @@ const AllProposals = () => {
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
+  };
+
+  // Fetch proposals
+  const getProposalsData = async (page, rowsPerPage) => {
+    try {
+      const accessToken = getToken("accessToken");
+      if (!accessToken) return;
+      const response = await axios.get(`${BASE_API_URL}/proposals/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { page: page + 1, page_size: rowsPerPage },
+      });
+      if (response && response.status === 200) {
+        setProposalsData(Array.isArray(response.data?.results) ? response.data.results : []);
+        setCount(typeof response.data?.count === 'number' ? response.data.count : 0);
+      } else {
+        setProposalsData([]);
+        setCount(0);
+      }
+    } catch (err) {
+      setProposalsData([]);
+      setCount(0);
+    }
+  };
+
+  useEffect(() => {
+    getProposalsData(page, rowsPerPage);
+  }, [page, rowsPerPage]);
+
+  // Alerts
+  const [showError, setShowError] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showMessage, setShowMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Create submit using plain form handler (prevents page refresh)
+  const handleCreateSubmit = async (e) => {
+    try {
+      e.preventDefault();
+      if (isSubmitting) return;
+      setIsSubmitting(true);
+
+      const form = e.target;
+      const payload = {
+        proposal_title: form.contractName?.value || "",
+        client_lead: form.contractClientName?.value || "",
+        proposal_date: form.contractStartDate?.value || "",
+        valid_until: form.contractEndDate?.value || "",
+        proposal_value: form.contractBudget?.value?.toString() || "",
+        description: form.contractDescription?.value || "",
+        status: form.proposalStatus?.value || "Pending",
+      };
+
+      // Validate minimal required fields client-side
+      if (!payload.proposal_title || !payload.client_lead || !payload.proposal_date || !payload.valid_until || !payload.proposal_value) {
+        setShowError(true);
+        setShowMessage("Please fill all required fields.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const accessToken = getToken("accessToken");
+      if (!accessToken) {
+        setShowError(true);
+        setShowMessage("Not authenticated.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const response = await axios.post(`${BASE_API_URL}/proposals/`, payload, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (response && response.status === 201) {
+        setShowSuccess(true);
+        setShowMessage("Proposal created successfully.");
+        setCreatecontractsOpen(false);
+        // Reset form fields
+        form.reset();
+        getProposalsData(page, rowsPerPage);
+      } else {
+        setShowError(true);
+        setShowMessage("Failed to create proposal.");
+      }
+    } catch (err) {
+      const apiMsg = err?.response?.data && typeof err.response.data === 'object'
+        ? JSON.stringify(err.response.data)
+        : (err?.message || 'Request failed');
+      setShowError(true);
+      setShowMessage(apiMsg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Create contract modal
@@ -79,7 +171,9 @@ const AllProposals = () => {
 
   // View contract Modal
   const [viewcontractsOpen, setViewcontractsOpen] = useState(false);
-  const handleViewcontractsOpen = () => {
+  const [proposalDetails, setProposalDetails] = useState(null);
+  const handleViewcontractsOpen = (row) => {
+    setProposalDetails(row || null);
     setViewcontractsOpen(true);
   };
   const handleViewcontractsClose = () => {
@@ -110,6 +204,10 @@ const AllProposals = () => {
           </div>
         </div>
 
+        {/* Alerts */}
+        <ErrorAlert show={showError} message={showMessage} onClose={() => setShowError(false)} />
+        <SuccessAlert show={showSuccess} message={showMessage} onClose={() => setShowSuccess(false)} />
+
         {/* Data Table */}
         <div className="rounded-[5px] mt-8 shadow-[2px_2px_5px_2px] shadow-gray-400 overflow-x-scroll no-scrollbar w-full">
           <TableContainer
@@ -125,23 +223,23 @@ const AllProposals = () => {
                   <TableCell>Proposal Date</TableCell>
                   <TableCell>Valid Until</TableCell>
                   <TableCell>Proposal Title</TableCell>
+                  <TableCell>Status</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {data
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((row, index) => (
+                {proposalsData && proposalsData.map((row, index) => (
                     <TableRow key={index}>
-                      <TableCell>{row.contractName}</TableCell>
-                      <TableCell>{row.email}</TableCell>
-                      <TableCell>{row.contact}</TableCell>
+                      <TableCell>{row.proposal_value}</TableCell>
+                      <TableCell>{row.client_lead}</TableCell>
+                      <TableCell>{row.proposal_date}</TableCell>
+                      <TableCell>{row.valid_until}</TableCell>
+                      <TableCell>{row.proposal_title}</TableCell>
                       <TableCell>{row.status}</TableCell>
-                      <TableCell>{row.assignTo}</TableCell>
 
                       <TableCell>
                         <IconButton
-                          onClick={handleViewcontractsOpen}
+                          onClick={() => handleViewcontractsOpen(row)}
                           aria-label="edit"
                           color="success"
                         >
@@ -172,7 +270,7 @@ const AllProposals = () => {
             <TablePagination
               rowsPerPageOptions={[5, 10, 20]}
               component="div"
-              count={data.length}
+              count={count}
               rowsPerPage={rowsPerPage}
               page={page}
               onPageChange={handleChangePage}
@@ -187,7 +285,7 @@ const AllProposals = () => {
           onClose={handleCreatecontractsClose}
           title={"Create Contract"}
         >
-          <form action="">
+          <form onSubmit={handleCreateSubmit}>
             <div className="mt-4 space-y-2">
               <Grid2 container spacing={2}>
                 <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
@@ -248,14 +346,14 @@ const AllProposals = () => {
 
               <Grid2 container spacing={2}>
                 <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
-                  <label htmlFor="contractStatus">
+                  <label htmlFor="proposalStatus">
                     Status <span className="text-red-600">*</span>
                   </label>
-                  <select name="contractStatus" id="contractStatus">
+                  <select name="proposalStatus" id="proposalStatus" defaultValue={'Pending'}>
                     <option value="">Select Status</option>
-                    <option value="Pendig">Pendig</option>
-                    <option value="Pendig">Active</option>
-                    <option value="Pendig">Completed</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Active">Active</option>
+                    <option value="Completed">Completed</option>
                     <option value="Cancelled">Cancelled</option>
                   </select>
                 </Grid2>
@@ -289,7 +387,7 @@ const AllProposals = () => {
 
               <div className="flex gap-3 flex-wrap justify-end">
                 <CloseBtn onClick={handleCreatecontractsClose}>Close</CloseBtn>
-                <PrimaryBtn type={"submit"}>Submit</PrimaryBtn>
+                <PrimaryBtn type={"submit"} disabled={isSubmitting} className={`${isSubmitting ? " cursor-wait" : ""}`}>{isSubmitting ? "Submitting" : "Submit"}</PrimaryBtn>
               </div>
             </div>
           </form>
@@ -445,7 +543,7 @@ const AllProposals = () => {
                   <div className="font-bold">Proposal Name</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>Proposal Name</div>
+                  <div>{proposalDetails?.proposal_title || '-'}</div>
                 </Grid2>
               </Grid2>
 
@@ -458,7 +556,7 @@ const AllProposals = () => {
                   <div className="font-bold">Client Name</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>Client name</div>
+                  <div>{proposalDetails?.client_lead || '-'}</div>
                 </Grid2>
               </Grid2>
 
@@ -471,7 +569,7 @@ const AllProposals = () => {
                   <div className="font-bold">Start Date</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>10-03-2025</div>
+                  <div>{proposalDetails?.proposal_date || '-'}</div>
                 </Grid2>
               </Grid2>
 
@@ -484,7 +582,7 @@ const AllProposals = () => {
                   <div className="font-bold">End Date</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>20-05-2025</div>
+                  <div>{proposalDetails?.valid_until || '-'}</div>
                 </Grid2>
               </Grid2>
 
@@ -497,7 +595,7 @@ const AllProposals = () => {
                   <div className="font-bold">Status</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>Pending</div>
+                  <div>{proposalDetails?.status || '-'}</div>
                 </Grid2>
               </Grid2>
 
@@ -510,7 +608,7 @@ const AllProposals = () => {
                   <div className="font-bold">Budget</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>10000000</div>
+                  <div>{proposalDetails?.proposal_value || '-'}</div>
                 </Grid2>
               </Grid2>
 
@@ -523,16 +621,7 @@ const AllProposals = () => {
                   <div className="font-bold">Description</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>
-                    Lorem ipsum dolor sit amet consectetur adipisicing elit.
-                    Maiores porro harum doloribus alias, officiis enim dolorem
-                    repudiandae praesentium earum? Animi repudiandae aut quaerat
-                    provident voluptatem esse excepturi quibusdam temporibus
-                    magni officiis praesentium consequuntur voluptatibus
-                    molestiae nulla consectetur inventore repellat sit ipsa,
-                    vitae tempore eius at quis recusandae. Iste, sint
-                    cupiditate.
-                  </div>
+                  <div>{proposalDetails?.description || '-'}</div>
                 </Grid2>
               </Grid2>
 

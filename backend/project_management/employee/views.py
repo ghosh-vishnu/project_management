@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import User
 from django.db import transaction
-from .models import Employee
+from .models import Employee, Address, BankDetails, Documents
 from .serializers import (
     EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer
 )
@@ -32,9 +32,27 @@ def get_value(key, default=''):
 @permission_classes([IsAuthenticated])
 def employee_names_list(request):
     """Get list of employee names for dropdowns"""
-    employees = Employee.objects.select_related('user').filter(is_active=True)
-    data = [{'id': emp.id, 'name': emp.name, 'designation': emp.designation if emp.designation else ''} for emp in employees]
-    return Response(data)
+    try:
+        employees = Employee.objects.select_related('user').filter(is_active=True)
+        data = []
+        for emp in employees:
+            try:
+                data.append({
+                    'id': getattr(emp, 'id', None),
+                    'name': getattr(emp, 'name', '') or '',
+                    'designation': getattr(emp, 'designation', '') or ''
+                })
+            except Exception as row_error:
+                # Skip bad rows but report minimal info for observability
+                data.append({
+                    'id': getattr(emp, 'id', None),
+                    'name': '',
+                    'designation': '',
+                    'error': f'Row error: {row_error}'
+                })
+        return Response(data)
+    except Exception as e:
+        return Response({'error': f'Failed to fetch employee names: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -95,8 +113,6 @@ def create_employee(request):
             password=password,
             is_active=is_active
         )
-        
-        from .models import Address, BankDetails, Documents
         
         # Handle current address
         current_address = None
@@ -236,34 +252,57 @@ def create_employee(request):
 @permission_classes([IsAuthenticated])
 def employee_list(request):
     """Get paginated list of employees"""
-    from django.core.paginator import Paginator
-    
-    page = int(request.GET.get('page', 1))
-    page_size = int(request.GET.get('page_size', 25))
-    show_inactive = request.GET.get('show_inactive', 'false').lower() == 'true'
-    
-    # Build base queryset; only valid relations in select_related
-    base_qs = Employee.objects.select_related('user')
-    
-    # Filter based on show_inactive parameter
-    if show_inactive:
-        # Show all employees including inactive ones
-        employees = base_qs.all()
-    else:
-        # Show only active employees by default
-        employees = base_qs.filter(is_active=True)
-    
-    paginator = Paginator(employees, page_size)
-    page_obj = paginator.get_page(page)
-    
-    serializer = EmployeeListSerializer(page_obj, many=True)
-    
-    return Response({
-        'count': paginator.count,
-        'next': page_obj.has_next() if page_obj.has_next() else None,
-        'previous': page_obj.has_previous() if page_obj.has_previous() else None,
-        'results': serializer.data
-    })
+    from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+    try:
+        # Parse and validate query params
+        raw_page = request.GET.get('page', '1')
+        raw_page_size = request.GET.get('page_size', '25')
+        show_inactive_raw = request.GET.get('show_inactive', 'false')
+
+        try:
+            page = int(str(raw_page).strip() or '1')
+        except (ValueError, TypeError):
+            page = 1
+        if page < 1:
+            page = 1
+
+        try:
+            page_size = int(str(raw_page_size).strip() or '25')
+        except (ValueError, TypeError):
+            page_size = 25
+        # Reasonable bounds to protect server
+        if page_size < 1:
+            page_size = 1
+        if page_size > 200:
+            page_size = 200
+
+        show_inactive = str(show_inactive_raw).lower() in ('true', '1', 'yes')
+
+        # Build base queryset
+        base_qs = Employee.objects.select_related('user')
+
+        employees = base_qs.all() if show_inactive else base_qs.filter(is_active=True)
+
+        paginator = Paginator(employees, page_size)
+        try:
+            page_obj = paginator.page(page)
+        except (EmptyPage, PageNotAnInteger):
+            # Fallback to last page on overflow or first page on invalid
+            if page > paginator.num_pages:
+                page_obj = paginator.page(paginator.num_pages or 1)
+            else:
+                page_obj = paginator.page(1)
+
+        serializer = EmployeeListSerializer(page_obj, many=True)
+
+        return Response({
+            'count': paginator.count,
+            'next': page_obj.next_page_number() if page_obj.has_next() else None,
+            'previous': page_obj.previous_page_number() if page_obj.has_previous() else None,
+            'results': serializer.data
+        })
+    except Exception as e:
+        return Response({'error': f'Failed to fetch employees: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET', 'PUT', 'DELETE'])
@@ -332,6 +371,24 @@ def employee_detail(request, pk):
             if dept_name in designation_mapping:
                 desig_map = designation_mapping[dept_name]
                 data['designation'] = desig_map.get(desig_id, desig_id)
+        
+        # Handle documents (files) update
+        if any(key.startswith('documents.') for key in request.FILES):
+            documents_data = {}
+            for key, file in request.FILES.items():
+                if key.startswith('documents.'):
+                    field_name = key.replace('documents.', '')
+                    documents_data[field_name] = file
+            
+            if documents_data and employee.documents:
+                # Update existing documents
+                for field_name, file in documents_data.items():
+                    setattr(employee.documents, field_name, file)
+                employee.documents.save()
+            elif documents_data and not employee.documents:
+                # Create new documents if they don't exist
+                employee.documents = Documents.objects.create(**documents_data)
+                employee.save()
         
         # Use the parsed data for serialization
         serializer = EmployeeDetailSerializer(employee, data=data, partial=True, context={'request': request})

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 import {
   Breadcrumbs,
@@ -24,12 +24,14 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteBtn from "../components/Buttons/DeleteBtn";
 import ModalComp from "../components/Modal/ModalComp";
 import Select from "react-select";
+import axios from "axios";
+import BASE_API_URL from "../data";
+import { getToken } from "../Token";
 
 const Meetings = () => {
-  const data = Array.from({ length: 50 }, (_, i) => ({
-    MeetingName: `Meeting name ${i + 1}`,
-    MeetingLead: `Meeting  lead ${i + 1}`,
-  }));
+  // Meetings list state
+  const [meetings, setMeetings] = useState([]);
+  const [count, setCount] = useState(0);
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
@@ -45,10 +47,33 @@ const Meetings = () => {
     setPage(0);
   };
 
+  // Fetch meetings from backend
+  const fetchMeetings = async (pageNumber, pageSize) => {
+    try {
+      const accessToken = getToken("accessToken");
+      const response = await axios.get(`${BASE_API_URL}/meetings/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { page: pageNumber + 1, page_size: pageSize },
+      });
+      setMeetings(response.data.results || []);
+      setCount(response.data.count || 0);
+    } catch (e) {
+      setMeetings([]);
+      setCount(0);
+    }
+  };
+
+  useEffect(() => {
+    fetchMeetings(page, rowsPerPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, rowsPerPage]);
+
   // Create Meeting modal
   const [createMeetingsOpen, setCreateMeetingsOpen] = useState(false);
 
   const handleCreateMeetingsOpen = () => {
+    setCreateForm({ name: "", lead: "", note: "", link: "", startAt: "", duration: 30, status: "scheduled" });
+    setSelectedMeetingMembers([]);
     setCreateMeetingsOpen(true);
   };
   const handleCreateMeetingsClose = () => {
@@ -67,30 +92,79 @@ const Meetings = () => {
 
   // Delete Meeting Modal
   const [deleteMeetingsOpen, setDeleteMeetingsOpen] = useState(false);
-  const handleDeleteMeetingsOpen = () => {
+  const [deleteId, setDeleteId] = useState(null);
+  const handleDeleteMeetingsOpen = (row) => {
+    setDeleteId(row?.id || null);
     setDeleteMeetingsOpen(true);
   };
   const handleDeleteMeetingsClose = () => {
     setDeleteMeetingsOpen(false);
   };
 
+  const deleteMeeting = async () => {
+    if (!deleteId) return;
+    try {
+      const accessToken = getToken("accessToken");
+      await axios.delete(`${BASE_API_URL}/meetings/${deleteId}/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      setDeleteMeetingsOpen(false);
+      setDeleteId(null);
+      fetchMeetings(page, rowsPerPage);
+    } catch {}
+  };
+
   // View Meeting Modal
   const [viewMeetingsOpen, setViewMeetingsOpen] = useState(false);
-  const handleViewMeetingsOpen = () => {
+  const [meetingDetails, setMeetingDetails] = useState(null);
+  const handleViewMeetingsOpen = async (row) => {
+    try {
+      const accessToken = getToken("accessToken");
+      const resp = await axios.get(`${BASE_API_URL}/meetings/${row.id}/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      setMeetingDetails(resp.data);
+    } catch {
+      setMeetingDetails(row);
+    }
     setViewMeetingsOpen(true);
   };
   const handleViewMeetingsClose = () => {
     setViewMeetingsOpen(false);
   };
 
-  // Meeting member's options
-  const MeetingMembers = [
-    { value: "Employee 1", label: "Employee 1" },
-    { value: "Employee 2", label: "Employee 2" },
-    { value: "Employee 3", label: "Employee 3" },
-    { value: "Employee 4", label: "Employee 4" },
-  ];
+  // Employees for lead + members
+  const [employeeNameData, setEmployeeNameData] = useState([]);
+  const [selectMultiOptions, setSelectMultiOptions] = useState([]);
+  const getEmployeeNameData = async () => {
+    try {
+      const accessToken = getToken("accessToken");
+      const response = await axios.get(
+        `${BASE_API_URL}/peoples/employees-name/`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      setEmployeeNameData(response.data || []);
+
+      if (Array.isArray(response.data)) {
+        const opts = response.data.map((emp) => ({ value: emp.id, label: emp.name }));
+        setSelectMultiOptions(opts);
+      }
+    } catch (err) {
+      // ignore silently for now
+    }
+  };
+
+  useEffect(() => {
+    getEmployeeNameData();
+  }, []);
+
   const [selectedMeetingMembers, setSelectedMeetingMembers] = useState([]);
+  const [editForm, setEditForm] = useState({ id: null, name: "", lead: "", note: "", link: "", startAt: "", duration: 30, status: "scheduled" });
+  const [createForm, setCreateForm] = useState({ name: "", lead: "", note: "", link: "", startAt: "", duration: 30, status: "scheduled" });
   return (
     <div>
       <div>
@@ -136,29 +210,42 @@ const Meetings = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {data
-                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                    .map((row, index) => (
+                  {meetings.map((row, index) => (
                       <TableRow key={index}>
-                        <TableCell>{row.MeetingName}</TableCell>
-                        <TableCell>{row.MeetingLead}</TableCell>
+                        <TableCell>{row.name}</TableCell>
+                        <TableCell>{row.start_at ? new Date(row.start_at).toLocaleString() : '-'}</TableCell>
                         <TableCell>
-                          <a href="" target="_blank" className="px-4 py-2 rounded-[5px] bg-gray-200 cursor-pointer ">Join</a>
+                          {row.meeting_link ? (
+                            <a href={row.meeting_link} target="_blank" rel="noreferrer" className="px-4 py-2 rounded-[5px] bg-gray-200 cursor-pointer ">Join</a>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </TableCell>
-                        <TableCell>{row.MeetingLead}</TableCell>
-                        <TableCell>{row.MeetingLead}</TableCell>
-                        <TableCell>{row.MeetingLead}</TableCell>
+                        <TableCell>{row.duration_minutes} mins</TableCell>
+                        <TableCell>{row.scheduled_by_employee?.name || row.scheduled_by?.first_name || row.scheduled_by?.username || '-'}</TableCell>
+                        <TableCell>{row.status}</TableCell>
 
                         <TableCell>
                           <IconButton
-                            onClick={handleViewMeetingsOpen}
+                            onClick={() => handleViewMeetingsOpen(row)}
                             aria-label="edit"
                             color="success"
                           >
                             <RemoveRedEyeIcon />
                           </IconButton>
                           <IconButton
-                            onClick={handleEditMeetingsOpen}
+                            onClick={async () => {
+                              try {
+                                const accessToken = getToken("accessToken");
+                                const resp = await axios.get(`${BASE_API_URL}/meetings/${row.id}/`, { headers: { Authorization: `Bearer ${accessToken}` }});
+                                const d = resp.data;
+                                setEditForm({ id: d.id, name: d.name, lead: d.scheduled_by_employee?.id || "", note: d.note || "", link: d.meeting_link || "", startAt: d.start_at ? d.start_at.substring(0,16) : "", duration: d.duration_minutes || 30, status: d.status || "scheduled" });
+                                setSelectedMeetingMembers((d.attendee_employees || []).map((e)=>({ value: e.id, label: e.name })));
+                              } catch {
+                                setEditForm({ id: row.id, name: row.name, lead: row.scheduled_by_employee?.id || "", note: row.note || "", link: row.meeting_link || "", startAt: row.start_at ? row.start_at.substring(0,16) : "", duration: row.duration_minutes || 30, status: row.status || "scheduled" });
+                              }
+                              setEditMeetingsOpen(true);
+                            }}
                             aria-label="edit"
                             color="warning"
                           >
@@ -166,7 +253,7 @@ const Meetings = () => {
                           </IconButton>
 
                           <IconButton
-                            onClick={handleDeleteMeetingsOpen}
+                            onClick={() => handleDeleteMeetingsOpen(row)}
                             aria-label="delete"
                             color="error"
                           >
@@ -182,7 +269,7 @@ const Meetings = () => {
               <TablePagination
                 rowsPerPageOptions={[5, 10, 20]}
                 component="div"
-                count={data.length}
+                count={count}
                 rowsPerPage={rowsPerPage}
                 page={page}
                 onPageChange={handleChangePage}
@@ -197,7 +284,28 @@ const Meetings = () => {
             onClose={handleCreateMeetingsClose}
             title={"Create Meeting"}
           >
-            <form action="">
+            <form onSubmit={async (e)=>{
+              e.preventDefault();
+              try {
+                const accessToken = getToken("accessToken");
+                const payload = {
+                  name: createForm.name,
+                  start_at: createForm.startAt ? new Date(createForm.startAt).toISOString() : null,
+                  meeting_link: createForm.link || null,
+                  duration_minutes: Number(createForm.duration) || 30,
+                  status: createForm.status || "scheduled",
+                  note: createForm.note || "",
+                  scheduled_by_employee_id: createForm.lead || null,
+                  attendee_employee_ids: selectedMeetingMembers.map((m)=>m.value),
+                };
+                await axios.post(`${BASE_API_URL}/meetings/`, payload, { headers: { Authorization: `Bearer ${accessToken}` }});
+                handleCreateMeetingsClose();
+                fetchMeetings(page, rowsPerPage);
+              } catch (err) {
+                const msg = err?.response?.data || err?.message || 'Failed to create meeting';
+                window.alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+              }
+            }}>
               <div className="mt-4 space-y-2">
                 <Grid2 container spacing={2}>
                   <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
@@ -210,6 +318,8 @@ const Meetings = () => {
                       type="text"
                       name="MeetingName"
                       id="MeetingName"
+                      value={createForm.name}
+                      onChange={(e)=>setCreateForm((p)=>({...p, name: e.target.value}))}
                     />
                     <small></small>
                   </Grid2>
@@ -217,12 +327,70 @@ const Meetings = () => {
                     <label htmlFor="MeetingLead">
                       Meeting Lead<span className="text-red-600">*</span>
                     </label>
-                    <select name="MeetingLead" id="MeetingLead">
+                    <select name="MeetingLead" id="MeetingLead" value={createForm.lead} onChange={(e)=>setCreateForm((p)=>({...p, lead: e.target.value}))}>
                       <option value="">Select Meeting Lead</option>
-                      <option value="Meeting Lead 1">Meeting Lead 1</option>
-                      <option value="Meeting Lead 2"> Meeting Lead 2</option>
-                      <option value="Meeting Lead 3"> Meeting Lead 3</option>
-                      <option value="Meeting Lead 4"> Meeting Lead 4</option>
+                      {employeeNameData.map((emp) => (
+                        <option key={emp.id} value={emp.id}>{emp.name}</option>
+                      ))}
+                    </select>
+                    <small></small>
+                  </Grid2>
+                </Grid2>
+
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
+                    <label htmlFor="StartAt">
+                      Start Date & Time <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      required
+                      type="datetime-local"
+                      name="StartAt"
+                      id="StartAt"
+                      value={createForm.startAt}
+                      onChange={(e)=>setCreateForm((p)=>({...p, startAt: e.target.value}))}
+                    />
+                    <small></small>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
+                    <label htmlFor="MeetingLink">Meeting Link</label>
+                    <input
+                      placeholder="https://…"
+                      type="url"
+                      name="MeetingLink"
+                      id="MeetingLink"
+                      value={createForm.link}
+                      onChange={(e)=>setCreateForm((p)=>({...p, link: e.target.value}))}
+                    />
+                    <small></small>
+                  </Grid2>
+                </Grid2>
+
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
+                    <label htmlFor="Duration">
+                      Duration (mins) <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      required
+                      placeholder="30"
+                      type="number"
+                      min={1}
+                      name="Duration"
+                      id="Duration"
+                      value={createForm.duration}
+                      onChange={(e)=>setCreateForm((p)=>({...p, duration: e.target.value}))}
+                    />
+                    <small></small>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
+                    <label htmlFor="Status">
+                      Status <span className="text-red-600">*</span>
+                    </label>
+                    <select name="Status" id="Status" value={createForm.status} onChange={(e)=>setCreateForm((p)=>({...p, status: e.target.value}))}>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
                     </select>
                     <small></small>
                   </Grid2>
@@ -235,7 +403,7 @@ const Meetings = () => {
                     </label>
                     <Select
                       isMulti
-                      options={MeetingMembers}
+                      options={selectMultiOptions}
                       value={selectedMeetingMembers}
                       onChange={setSelectedMeetingMembers}
                       className="text-black"
@@ -290,6 +458,8 @@ const Meetings = () => {
                     rows={4}
                     name="MeetingNote"
                     id="MeetingNote"
+                    value={createForm.note}
+                    onChange={(e)=>setCreateForm((p)=>({...p, note: e.target.value}))}
                   ></textarea>
                   <small></small>
                 </div>
@@ -308,7 +478,29 @@ const Meetings = () => {
             open={editMeetingsOpen}
             onClose={handleEditMeetingsClose}
           >
-            <form action="">
+            <form onSubmit={async (e)=>{
+              e.preventDefault();
+              try {
+                if (!editForm.id) return;
+                const accessToken = getToken("accessToken");
+                const payload = {
+                  name: editForm.name,
+                  start_at: editForm.startAt ? new Date(editForm.startAt).toISOString() : null,
+                  meeting_link: editForm.link || null,
+                  duration_minutes: Number(editForm.duration) || 30,
+                  status: editForm.status || "scheduled",
+                  note: editForm.note || "",
+                  scheduled_by_employee_id: editForm.lead || null,
+                  attendee_employee_ids: selectedMeetingMembers.map((m)=>m.value),
+                };
+                await axios.put(`${BASE_API_URL}/meetings/${editForm.id}/`, payload, { headers: { Authorization: `Bearer ${accessToken}` }});
+                handleEditMeetingsClose();
+                fetchMeetings(page, rowsPerPage);
+              } catch (err) {
+                const msg = err?.response?.data || err?.message || 'Failed to update meeting';
+                window.alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+              }
+            }}>
               <div className="mt-4 space-y-2">
                 <Grid2 container spacing={2}>
                   <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
@@ -321,6 +513,8 @@ const Meetings = () => {
                       type="text"
                       name="MeetingName"
                       id="MeetingName"
+                      value={editForm.name}
+                      onChange={(e)=>setEditForm((p)=>({...p, name: e.target.value}))}
                     />
                     <small></small>
                   </Grid2>
@@ -328,12 +522,70 @@ const Meetings = () => {
                     <label htmlFor="MeetingLead">
                       Meeting Lead<span className="text-red-600">*</span>
                     </label>
-                    <select name="MeetingLead" id="MeetingLead">
+                    <select name="MeetingLead" id="MeetingLead" value={editForm.lead} onChange={(e)=>setEditForm((p)=>({...p, lead: e.target.value}))}>
                       <option value="">Select Meeting Lead</option>
-                      <option value="Meeting Lead 1">Meeting Lead 1</option>
-                      <option value="Meeting Lead 2"> Meeting Lead 2</option>
-                      <option value="Meeting Lead 3"> Meeting Lead 3</option>
-                      <option value="Meeting Lead 4"> Meeting Lead 4</option>
+                      {employeeNameData.map((emp) => (
+                        <option key={emp.id} value={emp.id}>{emp.name}</option>
+                      ))}
+                    </select>
+                    <small></small>
+                  </Grid2>
+                </Grid2>
+
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
+                    <label htmlFor="EditStartAt">
+                      Start Date & Time <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      required
+                      type="datetime-local"
+                      name="EditStartAt"
+                      id="EditStartAt"
+                      value={editForm.startAt}
+                      onChange={(e)=>setEditForm((p)=>({...p, startAt: e.target.value}))}
+                    />
+                    <small></small>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
+                    <label htmlFor="EditMeetingLink">Meeting Link</label>
+                    <input
+                      placeholder="https://…"
+                      type="url"
+                      name="EditMeetingLink"
+                      id="EditMeetingLink"
+                      value={editForm.link}
+                      onChange={(e)=>setEditForm((p)=>({...p, link: e.target.value}))}
+                    />
+                    <small></small>
+                  </Grid2>
+                </Grid2>
+
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
+                    <label htmlFor="EditDuration">
+                      Duration (mins) <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      required
+                      placeholder="30"
+                      type="number"
+                      min={1}
+                      name="EditDuration"
+                      id="EditDuration"
+                      value={editForm.duration}
+                      onChange={(e)=>setEditForm((p)=>({...p, duration: e.target.value}))}
+                    />
+                    <small></small>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
+                    <label htmlFor="EditStatus">
+                      Status <span className="text-red-600">*</span>
+                    </label>
+                    <select name="EditStatus" id="EditStatus" value={editForm.status} onChange={(e)=>setEditForm((p)=>({...p, status: e.target.value}))}>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
                     </select>
                     <small></small>
                   </Grid2>
@@ -346,7 +598,7 @@ const Meetings = () => {
                     </label>
                     <Select
                       isMulti
-                      options={MeetingMembers}
+                      options={selectMultiOptions}
                       value={selectedMeetingMembers}
                       onChange={setSelectedMeetingMembers}
                       className="text-black"
@@ -401,6 +653,8 @@ const Meetings = () => {
                     rows={4}
                     name="MeetingNote"
                     id="MeetingNote"
+                    value={editForm.note}
+                    onChange={(e)=>setEditForm((p)=>({...p, note: e.target.value}))}
                   ></textarea>
                   <small></small>
                 </div>
@@ -427,7 +681,7 @@ const Meetings = () => {
                 >
                   Close
                 </CloseBtn>
-                <DeleteBtn>Delete</DeleteBtn>
+                <DeleteBtn onClick={deleteMeeting}>Delete</DeleteBtn>
               </div>
             </div>
           </ModalComp>
@@ -438,6 +692,7 @@ const Meetings = () => {
             open={viewMeetingsOpen}
             onClose={handleViewMeetingsClose}
           >
+            {meetingDetails && (
             <div className="mt-4  no-scrollbar overflow-y-scroll">
               <div className=" border    border-gray-500  rounded-[.5rem]">
                 <Grid2
@@ -449,7 +704,37 @@ const Meetings = () => {
                     <div className="font-bold">Meeting Name</div>
                   </Grid2>
                   <Grid2 size={8}>
-                    <div>Meeting Name</div>
+                    <div>{meetingDetails.name || '-'}</div>
+                  </Grid2>
+                </Grid2>
+
+                <Grid2
+                  container
+                  spacing={2}
+                  className="border-b px-4 py-2 border-gray-500"
+                >
+                  <Grid2 size={4}>
+                    <div className="font-bold">Start Date & Time</div>
+                  </Grid2>
+                  <Grid2 size={8}>
+                    <div>{meetingDetails.start_at ? new Date(meetingDetails.start_at).toLocaleString() : '-'}</div>
+                  </Grid2>
+                </Grid2>
+
+                <Grid2
+                  container
+                  spacing={2}
+                  className="border-b px-4 py-2 border-gray-500"
+                >
+                  <Grid2 size={4}>
+                    <div className="font-bold">Meeting Link</div>
+                  </Grid2>
+                  <Grid2 size={8}>
+                    {meetingDetails.meeting_link ? (
+                      <a href={meetingDetails.meeting_link} target="_blank" rel="noreferrer" className="text-blue-700 underline">{meetingDetails.meeting_link}</a>
+                    ) : (
+                      <div>-</div>
+                    )}
                   </Grid2>
                 </Grid2>
 
@@ -462,7 +747,7 @@ const Meetings = () => {
                     <div className="font-bold">Meeting Lead</div>
                   </Grid2>
                   <Grid2 size={8}>
-                    <div>Meeting Lead Name</div>
+                    <div>{meetingDetails.scheduled_by_employee?.name || meetingDetails.scheduled_by?.first_name || meetingDetails.scheduled_by?.username || '-'}</div>
                   </Grid2>
                 </Grid2>
 
@@ -475,10 +760,11 @@ const Meetings = () => {
                     <div className="font-bold">Meeting Members</div>
                   </Grid2>
                   <Grid2 size={8}>
-                    <div>Member 1</div>
-                    <div>Member 2</div>
-                    <div>Member 3</div>
-                    <div>Member 4</div>
+                    {Array.isArray(meetingDetails.attendee_employees) && meetingDetails.attendee_employees.length > 0 ? (
+                      meetingDetails.attendee_employees.map((m, i)=> (<div key={i}>{m.name}</div>))
+                    ) : (
+                      <div>-</div>
+                    )}
                   </Grid2>
                 </Grid2>
 
@@ -487,14 +773,12 @@ const Meetings = () => {
                     <div className="font-bold">Notes</div>
                   </Grid2>
                   <Grid2 size={8}>
-                    <div>
-                      Lorem ipsum dolor sit amet consectetur adipisicing elit.
-                      Nulla, aperiam?
-                    </div>
+                    <div>{meetingDetails.note || '-'}</div>
                   </Grid2>
                 </Grid2>
               </div>
             </div>
+            )}
           </ModalComp>
         </div>
       </div>

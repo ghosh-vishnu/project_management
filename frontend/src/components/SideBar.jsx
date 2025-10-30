@@ -45,6 +45,8 @@ import FilePresentIcon from '@mui/icons-material/FilePresent';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import SettingsIcon from '@mui/icons-material/Settings';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import SuccessAlert from "./Alert/SuccessAlert";
 import PrimaryBtn from "./Buttons/PrimaryBtn";
 import { getToken } from "../Token";
@@ -108,7 +110,73 @@ export default function Sidebar({ children }) {
   };
   const handleClose = () => {
     setAnchorEl(null);
+    setThemeAnchorEl(null);
   };
+
+  // Theme Menu State
+  const [themeAnchorEl, setThemeAnchorEl] = useState(null);
+  const themeMenuOpen = Boolean(themeAnchorEl);
+  const [currentTheme, setCurrentTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'light';
+  });
+
+  const handleThemeMenuOpen = (event) => {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+      setThemeAnchorEl(event.currentTarget);
+    }
+  };
+
+  const handleThemeMenuClose = () => {
+    setThemeAnchorEl(null);
+  };
+
+  // Apply theme to document
+  const applyTheme = (theme) => {
+    const root = document.documentElement;
+    root.classList.remove('dark', 'light');
+    
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else if (theme === 'match-browser') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.classList.add(prefersDark ? 'dark' : 'light');
+    } else {
+      root.classList.add('light');
+    }
+    
+    localStorage.setItem('theme', theme);
+    setCurrentTheme(theme);
+  };
+
+  const handleThemeChange = (theme) => {
+    applyTheme(theme);
+    handleThemeMenuClose();
+  };
+
+  // Initialize theme on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    if (savedTheme) {
+      applyTheme(savedTheme);
+    }
+    
+    // Listen for system theme changes if 'match-browser' is selected
+    const checkMatchBrowser = () => {
+      if (localStorage.getItem('theme') === 'match-browser') {
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = () => {
+          applyTheme('match-browser');
+        };
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
+      }
+    };
+    
+    const cleanup = checkMatchBrowser();
+    return cleanup;
+  }, []);
 
 
   const navigate = useNavigate()
@@ -133,9 +201,6 @@ export default function Sidebar({ children }) {
       }, 1000);
     }
   }
-
-
-
   return (
     <div className=" w-full ">
       {/* Show success message here */}
@@ -261,7 +326,15 @@ export default function Sidebar({ children }) {
               id="account-menu"
               open={open}
               onClose={handleClose}
-              onClick={handleClose}
+              onClick={(e) => {
+                // Don't close if clicking on theme menu
+                if (!e.target.closest('[role="menu"]') || e.target.closest('[id="account-menu"]')) {
+                  // Only close if not clicking on theme submenu
+                  if (!themeMenuOpen) {
+                    handleClose();
+                  }
+                }
+              }}
               slotProps={{
                 paper: {
                   elevation: 0,
@@ -300,7 +373,10 @@ export default function Sidebar({ children }) {
               anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
             >
               <MenuItem 
-                onClick={handleClose}
+                onClick={() => {
+                  handleClose();
+                  navigate('/profile');
+                }}
                 sx={{
                   color: '#ffffff',
                   '&:hover': {
@@ -309,7 +385,7 @@ export default function Sidebar({ children }) {
                   }
                 }}
               >
-                <Link to={'/profile'} className="flex items-center w-full text-white hover:text-cyan-400 transition-colors duration-200">  
+                <ListItemIcon>
                   <Avatar 
                     sx={{ 
                       width: 28, 
@@ -320,8 +396,8 @@ export default function Sidebar({ children }) {
                   >
                     {localStorage.getItem('username')?.charAt(0).toUpperCase() || 'M'}
                   </Avatar>
-                  <span className="ml-2">Profile</span>
-                </Link>
+                </ListItemIcon>
+                Profile
               </MenuItem>
               <Divider sx={{ borderColor: 'rgba(6, 182, 212, 0.2)' }} />
 
@@ -342,6 +418,165 @@ export default function Sidebar({ children }) {
                   Reset Password
                 </Link>
               </MenuItem>
+
+              {/* Theme Menu Item */}
+              <MenuItem 
+                onMouseEnter={(e) => {
+                  e.stopPropagation();
+                  handleThemeMenuOpen(e);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (!themeMenuOpen) {
+                    handleThemeMenuOpen(e);
+                  } else {
+                    handleThemeMenuClose();
+                  }
+                }}
+                sx={{
+                  color: '#ffffff',
+                  '&:hover': {
+                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                    color: '#06b6d4'
+                  }
+                }}
+              >
+                <ListItemIcon>
+                  <Brightness4Icon sx={{ color: 'inherit', fontSize: 20 }} />
+                </ListItemIcon>
+                Theme
+                <ChevronRightIcon sx={{ ml: 'auto', fontSize: 18 }} />
+              </MenuItem>
+
+              {/* Theme Sub-menu */}
+              <Menu
+                anchorEl={themeAnchorEl}
+                open={themeMenuOpen}
+                onClose={handleThemeMenuClose}
+                MenuListProps={{
+                  onMouseLeave: (e) => {
+                    const relatedTarget = e.relatedTarget;
+                    if (!relatedTarget || (!relatedTarget.closest('[role="menu"]') && !relatedTarget.closest('[role="menuitem"]'))) {
+                      handleThemeMenuClose();
+                    }
+                  },
+                  onMouseEnter: (e) => e.stopPropagation(),
+                }}
+                anchorOrigin={{ horizontal: 'left', vertical: 'top' }}
+                transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                slotProps={{
+                  paper: {
+                    elevation: 0,
+                    sx: {
+                      overflow: "visible",
+                      filter: "drop-shadow(0px 4px 20px rgba(6, 182, 212, 0.3))",
+                      background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(6, 182, 212, 0.3)',
+                      borderRadius: '12px',
+                      mt: -0.5,
+                      ml: 1,
+                      minWidth: 180,
+                    },
+                  },
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Light Theme Option */}
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    console.log('Light theme clicked');
+                    handleThemeChange('light');
+                  }}
+                  selected={currentTheme === 'light'}
+                  sx={{
+                    color: '#ffffff',
+                    '&:hover': {
+                      backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                      color: '#06b6d4'
+                    },
+                    '&.Mui-selected': {
+                      backgroundColor: 'rgba(6, 182, 212, 0.2)',
+                      color: '#06b6d4',
+                      '&:hover': {
+                        backgroundColor: 'rgba(6, 182, 212, 0.25)',
+                      }
+                    }
+                  }}
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="w-4 h-4 rounded border-2 border-white/30 bg-white" />
+                    <span>Light</span>
+                    {currentTheme === 'light' && <span className="ml-auto text-cyan-400">✓</span>}
+                  </div>
+                </MenuItem>
+
+                {/* Dark Theme Option */}
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    console.log('Dark theme clicked');
+                    handleThemeChange('dark');
+                  }}
+                  selected={currentTheme === 'dark'}
+                  sx={{
+                    color: '#ffffff',
+                    '&:hover': {
+                      backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                      color: '#06b6d4'
+                    },
+                    '&.Mui-selected': {
+                      backgroundColor: 'rgba(6, 182, 212, 0.2)',
+                      color: '#06b6d4',
+                      '&:hover': {
+                        backgroundColor: 'rgba(6, 182, 212, 0.25)',
+                      }
+                    }
+                  }}
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="w-4 h-4 rounded border-2 border-white/30 bg-gray-800" />
+                    <span>Dark</span>
+                    {currentTheme === 'dark' && <span className="ml-auto text-cyan-400">✓</span>}
+                  </div>
+                </MenuItem>
+
+                {/* Match Browser Theme Option */}
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    console.log('Match browser theme clicked');
+                    handleThemeChange('match-browser');
+                  }}
+                  selected={currentTheme === 'match-browser'}
+                  sx={{
+                    color: '#ffffff',
+                    '&:hover': {
+                      backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                      color: '#06b6d4'
+                    },
+                    '&.Mui-selected': {
+                      backgroundColor: 'rgba(6, 182, 212, 0.2)',
+                      color: '#06b6d4',
+                      '&:hover': {
+                        backgroundColor: 'rgba(6, 182, 212, 0.25)',
+                      }
+                    }
+                  }}
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="w-4 h-4 rounded border-2 border-white/30 bg-gray-700" />
+                    <span>Match browser</span>
+                    {currentTheme === 'match-browser' && <span className="ml-auto text-cyan-400">✓</span>}
+                  </div>
+                </MenuItem>
+              </Menu>
+
               <MenuItem 
                 onClick={handleLogout}
                 sx={{

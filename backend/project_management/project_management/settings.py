@@ -44,6 +44,9 @@ INSTALLED_APPS = [
     'authentication',
     'employee',
     'teams',
+    'meeting_schedule',
+    'leads',
+    'proposal',
 ]
 
 MIDDLEWARE = [

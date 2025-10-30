@@ -88,31 +88,65 @@ const Teams = () => {
 
   // Employee data variable
   const [TeamsData, setTeamsData] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'active', 'inactive'
 
   // fetch the emp data list
-  const getTeamsData = async (pageNumber, pageSize) => {
+  const getTeamsData = async (pageNumber, pageSize, search = '', filter = 'all') => {
     try {
       const accessToken = getToken("accessToken");
       if (accessToken) {
+        const params = {
+          page: pageNumber + 1, // API might be 1-indexed, but TablePagination is 0-indexed
+          page_size: pageSize,
+        };
+        
+        // Add search parameter
+        if (search && search.trim()) {
+          params.search = search.trim();
+        }
+        
+        // Add filter parameter
+        if (filter !== 'all') {
+          params.is_active = filter === 'active' ? 'true' : 'false';
+        }
+        
         const response = await axios.get(`${BASE_API_URL}/peoples/teams/`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
-          params: {
-            page: pageNumber + 1, // API might be 1-indexed, but TablePagination is 0-indexed
-            page_size: pageSize,
-          },
+          params,
         });
         setTeamsData(response.data.results);
         setCount(response.data.count);
         // console.log(response.data)
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error('Error fetching teams:', error);
+    }
+  };
+  
+  // Search handler
+  const handleSearch = () => {
+    setPage(0); // Reset to first page
+    getTeamsData(0, rowsPerPage, searchQuery, activeFilter);
   };
 
   useEffect(() => {
-    getTeamsData(page, rowsPerPage);
+    getTeamsData(page, rowsPerPage, searchQuery, activeFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, rowsPerPage]);
+  
+  // Debounced search effect - only trigger when search/filter changes manually
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(0);
+      getTeamsData(0, rowsPerPage, searchQuery, activeFilter);
+    }, 500); // 500ms debounce
+    
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, activeFilter]);
 
   // employee name data
   const [employeeNameData, setEmployeeNameData] = useState([]);
@@ -184,28 +218,47 @@ const Teams = () => {
   // Edit Team Modal
   const [editTeamsOpen, setEditTeamsOpen] = useState(false);
 
-  const handleEditTeamsOpen = (data) => {
+  const handleEditTeamsOpen = async (rowData) => {
     if (localStorage.getItem("teamsId")) {
       localStorage.removeItem("teamsId");
     }
-    localStorage.setItem("teamsId", data.id);
-    // console.log(data.team_members)
-    const selectEmployeeOptions =  data.team_members.map((data, index)=>(
-      {value: data.id, label: data.name})
-    )
-    
-    setSelectedTeamMembers(data.team_members.map((data, index)=>(
-      {value: data.id, label: data.name})
-    ))
-    reset({
-      name: data.name,
-      team_lead_id: data.team_lead?.id,
-      // team_members : [data.team_members.map((teamMember, index)=>teamMember.id)],
-      teamNote: data.note,
-    });
-    // console.log(data.team_members)
-    
-    setEditTeamsOpen(true);
+    localStorage.setItem("teamsId", rowData.id);
+    try {
+      const accessToken = getToken("accessToken");
+      let data = rowData;
+      if (rowData?.id && accessToken) {
+        const response = await axios.get(
+          `${BASE_API_URL}/peoples/teams/${rowData.id}/`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+        if (response?.data) data = response.data;
+      }
+
+      const mappedMembers = Array.isArray(data.team_members)
+        ? data.team_members.map((member) => ({ value: member.id, label: member.name }))
+        : [];
+
+      setSelectedTeamMembers(mappedMembers);
+      reset({
+        name: data.name,
+        team_lead_id: data.team_lead?.id,
+        teamNote: data.note,
+      });
+      setEditTeamsOpen(true);
+    } catch (e) {
+      // fallback to opening with what we have
+      setSelectedTeamMembers([]);
+      reset({
+        name: rowData?.name,
+        team_lead_id: rowData?.team_lead?.id,
+        teamNote: rowData?.note,
+      });
+      setEditTeamsOpen(true);
+    }
   };
   const handleEditTeamsClose = () => {
     setEditTeamsOpen(false);
@@ -229,7 +282,27 @@ const Teams = () => {
   const [teamDetailsData, setTeamDetailsData] = useState({});
   const handleViewTeamsOpen = async (data) => {
     setViewTeamsOpen(true);
-    setTeamDetailsData(data);
+    try {
+      const accessToken = getToken("accessToken");
+      let details = data || {};
+      if (data?.id && accessToken) {
+        const response = await axios.get(
+          `${BASE_API_URL}/peoples/teams/${data.id}/`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+        if (response?.data) {
+          details = response.data;
+        }
+      }
+      setTeamDetailsData(details);
+    } catch (error) {
+      // If details fetch fails, fall back to the row data so at least something is shown
+      setTeamDetailsData(data || {});
+    }
   };
   const handleViewTeamsClose = () => {
     setViewTeamsOpen(false);
@@ -254,7 +327,7 @@ const Teams = () => {
         if (response.status == 204) {
           setShowSuccess(true);
           setShowMessage("Team deleted successfully.");
-          getTeamsData(page, rowsPerPage);
+          getTeamsData(page, rowsPerPage, searchQuery, activeFilter);
           handleDeleteTeamsClose();
         }
       }
@@ -292,10 +365,11 @@ const Teams = () => {
 
       if (response.status == 201) {
         setShowSuccess(true);
-        getTeamsData(page, rowsPerPage);
         setShowMessage("Teams created successfully.");
         setSelectedTeamMembers([]);
         reset();
+        handleCreateTeamsClose();
+        getTeamsData(page, rowsPerPage, searchQuery, activeFilter);
       }
     } catch (error) {
       // console.log(error.response)
@@ -357,7 +431,8 @@ const Teams = () => {
         if (response.status == 200) {
           setShowSuccess(true);
           setShowMessage("Teams edited successfully.");
-          getTeamsData(page, rowsPerPage);
+          handleEditTeamsClose();
+          getTeamsData(page, rowsPerPage, searchQuery, activeFilter);
         }
       }
     } catch (error) {
@@ -433,7 +508,36 @@ const Teams = () => {
             <div>
               <h4 className="text-2xl font-bold">Teams Management</h4>
             </div>
-            <div>
+            <div className="flex gap-2 flex-wrap">
+              {/* Search input */}
+              <input
+                type="text"
+                placeholder="Search teams..."
+                className="px-4 py-2 border-2 border-gray-300 rounded-[5px] focus:outline-none focus:border-blue-600"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSearch();
+                  }
+                }}
+              />
+              {/* Filter buttons */}
+              <button
+                onClick={() => {
+                  setActiveFilter(activeFilter === 'all' ? 'active' : activeFilter === 'active' ? 'inactive' : 'all');
+                  handleSearch();
+                }}
+                className={`px-4 py-2 rounded-[5px] border-2 ${
+                  activeFilter === 'active' 
+                    ? 'bg-green-500 text-white border-green-600' 
+                    : activeFilter === 'inactive'
+                    ? 'bg-red-500 text-white border-red-600'
+                    : 'bg-gray-200 border-gray-300'
+                }`}
+              >
+                {activeFilter === 'all' ? 'All Teams' : activeFilter === 'active' ? 'Active Only' : 'Inactive Only'}
+              </button>
               <PrimaryBtn onClick={handleCreateTeamsOpen}>
                 <AddIcon /> Create Team
               </PrimaryBtn>
@@ -452,6 +556,8 @@ const Teams = () => {
                   <TableRow className="bg-gray-200">
                     <TableCell>Team Name</TableCell>
                     <TableCell>Team Lead</TableCell>
+                    <TableCell>Members</TableCell>
+                    <TableCell>Status</TableCell>
                     <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
@@ -459,11 +565,36 @@ const Teams = () => {
                   {TeamsData &&
                     TeamsData.map((data, index) => (
                       <TableRow key={index}>
-                        <TableCell>{data.name}</TableCell>
                         <TableCell>
-                          {data.team_lead && data.team_lead.name}
+                          <div className="font-semibold">{data.name}</div>
+                          {data.note && (
+                            <small className="text-gray-500">{data.note.substring(0, 50)}...</small>
+                          )}
                         </TableCell>
-
+                        <TableCell>
+                          {data.team_lead ? (
+                            <div>
+                              <div className="font-medium">{data.team_lead.name}</div>
+                              <small className="text-gray-500">{data.team_lead.designation || 'N/A'}</small>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">No lead assigned</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
+                            {data.member_count || 0} {data.member_count === 1 ? 'member' : 'members'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className={`px-2 py-1 rounded-full text-sm ${
+                            data.is_active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {data.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </TableCell>
                         <TableCell>
                           <IconButton
                             onClick={() => handleViewTeamsOpen(data)}
@@ -526,7 +657,7 @@ const Teams = () => {
                       id="teamName"
                       {...register("name", {
                         required: "This field is required.",
-                        minlength: {
+                        minLength: {
                           value: 3,
                           message: (
                             <span>Length should be greater than 3.</span>
@@ -658,10 +789,10 @@ const Teams = () => {
                       name="teamName"
                       id="teamName"
                       {...register("name", {
-                        reuired: "This field is required.",
-                        minlength: {
+                        required: "This field is required.",
+                        minLength: {
                           value: 3,
-                          message: <span>Lenth should be greater than 2.</span>,
+                          message: <span>Length should be greater than 2.</span>,
                         },
                       })}
                     />
@@ -822,9 +953,7 @@ const Teams = () => {
                     </Grid2>
                     <Grid2 size={8}>
                       <div>
-                        {" "}
-                        {teamDetailsData.team_lead &&
-                          teamDetailsData.team_lead.name}{" "}
+                        {teamDetailsData?.team_lead?.name || "-"}
                       </div>
                     </Grid2>
                   </Grid2>
@@ -838,12 +967,14 @@ const Teams = () => {
                       <div className="font-bold">Team Members</div>
                     </Grid2>
                     <Grid2 size={8}>
-                      {teamDetailsData.team_members &&
-                        teamDetailsData.team_members.map(
-                          (teamMember, index) => (
-                            <div key={index}>{teamMember.name}</div>
-                          )
-                        )}
+                      {Array.isArray(teamDetailsData.team_members) &&
+                      teamDetailsData.team_members.length > 0 ? (
+                        teamDetailsData.team_members.map((teamMember, index) => (
+                          <div key={index}>{teamMember.name}</div>
+                        ))
+                      ) : (
+                        <div>-</div>
+                      )}
                     </Grid2>
                   </Grid2>
 
@@ -852,7 +983,7 @@ const Teams = () => {
                       <div className="font-bold">Notes</div>
                     </Grid2>
                     <Grid2 size={8}>
-                      <div>{teamDetailsData.note && teamDetailsData.note}</div>
+                      <div>{teamDetailsData.note || "-"}</div>
                     </Grid2>
                   </Grid2>
                 </div>

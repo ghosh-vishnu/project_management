@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Address, BankDetails, Documents, Employee
+from .models import Address, BankDetails, Documents, Employee, UserProfile
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -156,4 +156,10 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         )
         
         return employee
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['designation', 'department', 'organization']
 

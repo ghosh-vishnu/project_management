@@ -57,6 +57,7 @@ class Documents(models.Model):
     aadhar_card = models.FileField(upload_to='employee_documents/aadhar/', blank=True, null=True)
     pan_card = models.FileField(upload_to='employee_documents/pan/', blank=True, null=True)
     higher_education_certificate = models.FileField(upload_to='employee_documents/education/', blank=True, null=True)
+    banner_image = models.ImageField(upload_to='employee_documents/banners/', blank=True, null=True, help_text="Profile banner/cover image")
     
     def __str__(self):
         return f"Documents for {self.employee.name if hasattr(self, 'employee') else 'Employee' }"
@@ -88,6 +89,7 @@ class Employee(models.Model):
     # Department and Designation - Simple text fields
     department = models.CharField(max_length=200, blank=True, null=True)
     designation = models.CharField(max_length=200, blank=True, null=True)
+    organization = models.CharField(max_length=200, blank=True, null=True)
     
     # Related Models
     current_address = models.OneToOneField(Address, on_delete=models.CASCADE, related_name='current_employee', null=True, blank=True)
@@ -104,3 +106,15 @@ class Employee(models.Model):
     
     def __str__(self):
         return self.name
+
+
+class UserProfile(models.Model):
+    """Lightweight, user-editable profile overrides separate from the main Employee record."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='user_profile')
+    designation = models.CharField(max_length=200, blank=True, null=True)
+    department = models.CharField(max_length=200, blank=True, null=True)
+    organization = models.CharField(max_length=200, blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Profile of {self.user.username}"
