@@ -13,13 +13,6 @@ class EmployeeMiniSerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
     def get_name(self, obj):
-        # Prefer the Employee profile's name if available; fallback to user's full name or username
-        try:
-            emp = Employee.objects.only('name').get(user=obj)
-            if emp and getattr(emp, 'name', None):
-                return emp.name
-        except Employee.DoesNotExist:
-            pass
         full = f"{obj.first_name} {obj.last_name}".strip()
         return full or obj.username
 

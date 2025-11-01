@@ -72,6 +72,23 @@ class ProjectViewSet(viewsets.ModelViewSet):
             return Response({'error': f'Failed to delete project: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def project_names_list(request):
+    """Get list of project names for dropdowns"""
+    try:
+        projects = Project.objects.all()
+        data = []
+        for project in projects:
+            data.append({
+                'id': project.id,
+                'title': project.title or ''
+            })
+        return Response(data)
+    except Exception as e:
+        return Response({'error': f'Failed to fetch project names: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def project_list(request):

@@ -37,8 +37,15 @@ urlpatterns = [
     path('api/', include('meeting_schedule.urls')),  # Meetings endpoints
     path('api/', include('proposal.urls')),  # Proposals endpoints
     path('api/', include('contracts.urls')),  # Contracts endpoints
+    path('api/', include('tasks.urls')),  # Tasks endpoints
+    path('api/', include('todo.urls')),  # ToDo endpoints
+    path('api/', include('tickets.urls')),  # Tickets endpoints
+    path('api/', include('projects.urls')),  # Projects names endpoint
     path('api/', include(api_urls)),
     path('api/project/', include('projects.urls_compat')),  # Friendly endpoints matching frontend
+    path('api/finances/', include('setting.urls')),  # Bank accounts endpoints (under finances namespace)
+    path('api/finances/', include('finance.urls')),  # Income endpoints (under finances namespace)
+    path('api/', include('invoices.urls')),  # Invoices endpoints
 ]
 
 # Serve media files in development

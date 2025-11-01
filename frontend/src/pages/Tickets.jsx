@@ -26,7 +26,7 @@ import PrimaryBtn from "../components/Buttons/PrimaryBtn";
 import CloseBtn from "../components/Buttons/CloseBtn";
 import DeleteBtn from "../components/Buttons/DeleteBtn";
 import BASE_API_URL from "../data";
-import { set, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 
 // import { EMAIL_REGEX, PASSWORD_REGEX, PHONE_REGEX } from "../utils";
 import axios from "axios";
@@ -97,6 +97,7 @@ const Tickets = () => {
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [loading, setLoading] = useState(false);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -110,6 +111,7 @@ const Tickets = () => {
   // To fetch the ticket data list
   const getTicketsData = async (pageNumber, pageSize) => {
     try {
+      setLoading(true);
       const accessToken = getToken("accessToken");
       if (accessToken) {
         const response = await axios.get(`${BASE_API_URL}/tickets/`, {
@@ -121,12 +123,16 @@ const Tickets = () => {
             Authorization: `Bearer ${accessToken}`,
           },
         });
-        setTicketsData(response.data.results);
-        setCount(response.data.count);
+        setTicketsData(response.data.results || []);
+        setCount(response.data.count || 0);
       }
     } catch (error) {
       setShowError(true);
       setShowMessage("Failed to fetch tickets data.");
+      setTicketsData([]);
+      setCount(0);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -263,11 +269,25 @@ const Tickets = () => {
   const [showError, setShowError] = useState(false);
   const [showMessage, setShowMessage] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Post API Call
   const createTicketForm = async (data) => {
+    // Prevent multiple submissions
+    if (submitting) {
+      return;
+    }
+    
     try {
+      setSubmitting(true);
       const accessToken = getToken("accessToken");
+      if (!accessToken) {
+        setShowError(true);
+        setShowMessage("Authentication required. Please login again.");
+        setSubmitting(false);
+        return;
+      }
+      
       const response = await axios.post(`${BASE_API_URL}/tickets/`, data, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -277,9 +297,11 @@ const Tickets = () => {
       if (response.status === 201) {
         setShowSuccess(true);
         setShowMessage("Ticket created successfully.");
-        getTicketsData(page, rowsPerPage);
+        setPage(0); // Go back to first page to see new ticket
+        getTicketsData(0, rowsPerPage);
         handleCreateTicketsClose();
         reset();
+        setTimeout(() => setShowSuccess(false), 3000);
       }
     } catch (error) {
       if (error.response) {
@@ -302,6 +324,9 @@ const Tickets = () => {
         }
       }
       setShowError(true);
+      setTimeout(() => setShowError(false), 5000);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -444,38 +469,53 @@ const Tickets = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {ticketsData && 
-                  ticketsData.map((data, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{data.title}</TableCell>
-                      <TableCell>{data.project_name?.title}</TableCell>
-                      <TableCell>{data.assign_to?.name}</TableCell>
-                      <TableCell>{data.client_name?.name}</TableCell>
-                      <TableCell>{data.priority}</TableCell>
-                      <TableCell>{data.status}</TableCell>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : !ticketsData || ticketsData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      No tickets found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  ticketsData.map((data) => (
+                    <TableRow key={data.id}>
+                      <TableCell>{data.title || "N/A"}</TableCell>
+                      <TableCell>{data.project_name?.title || "N/A"}</TableCell>
+                      <TableCell>{data.assign_to?.name || "N/A"}</TableCell>
+                      <TableCell>{data.client_name?.name || "N/A"}</TableCell>
+                      <TableCell>{data.priority || "N/A"}</TableCell>
+                      <TableCell>{data.status || "N/A"}</TableCell>
                       <TableCell>
                         <IconButton
                           onClick={() => handleViewTicketsOpen(data)}
                           color="success"
+                          aria-label="view"
                         >
                           <RemoveRedEyeIcon />
                         </IconButton>
                         <IconButton
                           onClick={() => handleEditTicketsOpen(data)}
                           color="warning"
+                          aria-label="edit"
                         >
                           <EditIcon />
                         </IconButton>
                         <IconButton
                           onClick={() => handleDeleteTicketsOpen(data)}
                           color="error"
+                          aria-label="delete"
                         >
                           <DeleteIcon />
                         </IconButton>
                       </TableCell>
                     </TableRow>
-                  ))}
-
+                  ))
+                )}
               </TableBody>
             </Table>
             {/* Pagination */}
@@ -646,13 +686,13 @@ const Tickets = () => {
                 )}
               </div>
               <div className="flex gap-3 flex-wrap justify-end">
-                <CloseBtn onClick={handleCreateTicketsClose}>Close</CloseBtn>
+                <CloseBtn onClick={handleCreateTicketsClose} disabled={submitting}>Close</CloseBtn>
                 <PrimaryBtn
                     type={"Submit"}
-                    disabled={isSubmitting}
-                    className={`${isSubmitting ? " cursor-wait  " : ""}`}
+                    disabled={submitting || isSubmitting}
+                    className={`${(submitting || isSubmitting) ? " cursor-wait  " : ""}`}
                   >
-                    {isSubmitting ? "Submitting" : "Submit"}
+                    {(submitting || isSubmitting) ? "Submitting..." : "Submit"}
                   </PrimaryBtn>
               </div>
             </div>

@@ -24,25 +24,11 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteBtn from "../../components/Buttons/DeleteBtn";
 import ModalComp from "../../components/Modal/ModalComp";
 import BASE_API_URL from "../../data";
-import { set, useForm } from "react-hook-form";
-import { EMAIL_REGEX, PASSWORD_REGEX, PHONE_REGEX } from "../../utils";
+import { useForm } from "react-hook-form";
 import axios from "axios";
 import ErrorAlert from "../../components/Alert/ErrorAlert";
 import SuccessAlert from "../../components/Alert/SuccessAlert";
-import { ClassNames } from "@emotion/react";
 import { getToken } from "../../Token";
-
-  const data = Array.from({ length: 50 }, (_, i) => ({
-    ExpensesName: `expenses ${i + 1}`,
-    Amount: `254364${i + 1}`,
-    Date: `23-02-25`,
-    Purchasedby: `employee  ${i + 1} `,
-    Purchasedfrom: `Linkedin ${i + 1}`,
-    Bankaccount: `1254326875${i + 1}`,
-    Paymentmode:`UPI`,
-    Paymentid:`12564856${i + 1}`,
-
-  }));
 
    // Select for status
    const SelectPurchasedby = React.forwardRef(
@@ -188,12 +174,15 @@ const [showSuccess, setShowSuccess] = useState(false);
     setViewExpensesOpen(false);
   };
 
-   // Employee data variable
+   // Expenses data variable
    const [expensesData, setExpensesData] = useState([]);
+   const [loading, setLoading] = useState(false);
+   const [submitting, setSubmitting] = useState(false);
   
-   // To fetch the employee data list
-   const getExpensesData = async (page,rowsPerPage) => {
+   // To fetch the expenses data list
+   const getExpensesData = async (pageNumber, pageSize) => {
      try {
+       setLoading(true);
        const accessToken = getToken("accessToken");
        if (accessToken) {
          const response = await axios.get(`${BASE_API_URL}/finances/expenses/`, {
@@ -201,20 +190,30 @@ const [showSuccess, setShowSuccess] = useState(false);
              Authorization: `Bearer ${accessToken}`,
            },
            params:{
-            page : page + 1,
-            page_size : rowsPerPage,
-                     }
+            page: pageNumber + 1,
+            page_size: pageSize,
+           }
          });
 
          if(response.status == 200){
-          setExpensesData(response.data.results);
-          setcount(response.data.count)
+          setExpensesData(response.data.results || []);
+          setcount(response.data.count || 0);
          }
-         
-         //console.log(response.data.results)
-
        }
-     } catch (error) {}
+     } catch (error) {
+       console.error("Error fetching expenses:", error);
+       setShowError(true);
+       if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+         setShowMessage("Cannot connect to server. Please make sure the backend server is running.");
+       } else {
+         setShowMessage("Failed to fetch expenses data.");
+       }
+       setExpensesData([]);
+       setcount(0);
+       setTimeout(() => setShowError(false), 5000);
+     } finally {
+       setLoading(false);
+     }
    };  
 
    useEffect(()=>{
@@ -222,117 +221,209 @@ const [showSuccess, setShowSuccess] = useState(false);
    },[page,rowsPerPage])
  
     // Employee Name Data
-    const [employeeNameData, setEmployeeNameData] = useState();
+    const [employeeNameData, setEmployeeNameData] = useState([]);
     const getEmployeeNameData = async () => {
       try {
         const accessToken = getToken("accessToken");
+        if (!accessToken) return;
         const response = await axios.get(`${BASE_API_URL}/peoples/employees-name/`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
         });
-        setEmployeeNameData(response.data);
+        setEmployeeNameData(response.data || []);
       } 
-      catch (error) {}
+      catch (error) {
+        console.error("Error fetching employees:", error);
+        setEmployeeNameData([]);
+      }
     };
  
     // bank account Name data
-    const [BankAccountNameData, setBankAccountNameData] = useState();
+    const [BankAccountNameData, setBankAccountNameData] = useState([]);
     const getBankAccountNameData = async () => {
       try {
         const accessToken = getToken("accessToken");
+        if (!accessToken) return;
         const response = await axios.get(`${BASE_API_URL}/finances/bank-accounts-name/`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
         });
-        setBankAccountNameData(response.data);  
-      } catch (error) {}
+        setBankAccountNameData(response.data || []);  
+      } catch (error) {
+        console.error("Error fetching bank accounts:", error);
+        setBankAccountNameData([]);
+      }
     };
 
 
     // Post API Call 
   const createExpensesForm = async (data) => {
-    // console.log(data)
+    if (submitting) {
+      return;
+    }
+    
     try {
+      setSubmitting(true);
       const accessToken = getToken("accessToken");
+      if (!accessToken) {
+        setShowError(true);
+        setShowMessage("Authentication required. Please login again.");
+        setSubmitting(false);
+        return;
+      }
+
       const response = await axios.post(`${BASE_API_URL}/finances/expenses/`, data, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
         },
       });
 
       if (response.status == 201) {
         setShowSuccess(true);
         setShowMessage("Expenses created successfully.");
-        getExpensesData(page, rowsPerPage)
+        setPage(0);
+        getExpensesData(0, rowsPerPage);
         reset();
         handleCreateExpensesClose();
+        setTimeout(() => setShowSuccess(false), 3000);
       } else {
         setShowError(true);
         setShowMessage("Expenses doesn't created.");
       }
     } catch (error) {
-      // console.error(error)
+      console.error("Error creating expense:", error);
       setShowError(true);
-      setShowMessage("Expenses doesn't created.");
+      
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+        setShowMessage("Cannot connect to server. Please make sure the backend server is running.");
+      } else if (error.response?.data) {
+        const errorData = error.response.data;
+        if (errorData.error) {
+          setShowMessage(errorData.error);
+        } else if (errorData.detail) {
+          setShowMessage(errorData.detail);
+        } else if (typeof errorData === 'object') {
+          const errors = Object.entries(errorData)
+            .map(([key, value]) => {
+              const errorText = Array.isArray(value) ? value.join(', ') : String(value);
+              return `${key}: ${errorText}`;
+            })
+            .join('; ');
+          setShowMessage(errors || "Failed to create expense. Please check your input.");
+        } else {
+          setShowMessage("Failed to create expense. Please try again.");
+        }
+      } else {
+        setShowMessage("Failed to create expense. Please try again.");
+      }
+      setTimeout(() => setShowError(false), 5000);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   // Update api call
   const editExpensesForm = async (data) => {
+    if (submitting) {
+      return;
+    }
     
     try {
+      setSubmitting(true);
       const accessToken = getToken("accessToken");
       const expensesId = localStorage.getItem("expensesId");
-      if (accessToken && expensesId){
-        const response = await axios.put(`${BASE_API_URL}/finances/expenses/${expensesId}/`, data, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-        
-        if (response.status == 200) {
-          setShowSuccess(true);
-          setShowMessage("Expenses edited successfully.");
-          getExpensesData(page,rowsPerPage)
-          handleEditExpensesClose();
-        
-        } 
+      if (!accessToken || !expensesId) {
+        setShowError(true);
+        setShowMessage("Authentication required or expense not selected.");
+        setSubmitting(false);
+        return;
       }
       
+      const response = await axios.put(`${BASE_API_URL}/finances/expenses/${expensesId}/`, data, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
       
+      if (response.status == 200) {
+        setShowSuccess(true);
+        setShowMessage("Expenses edited successfully.");
+        getExpensesData(page, rowsPerPage);
+        handleEditExpensesClose();
+        setTimeout(() => setShowSuccess(false), 3000);
+      }
     } catch (error) {
+      console.error("Error updating expense:", error);
       setShowError(true);
-      setShowMessage("Expenses doesn't edited.");
+      
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+        setShowMessage("Cannot connect to server. Please make sure the backend server is running.");
+      } else if (error.response?.data) {
+        const errorData = error.response.data;
+        if (errorData.error) {
+          setShowMessage(errorData.error);
+        } else if (errorData.detail) {
+          setShowMessage(errorData.detail);
+        } else if (typeof errorData === 'object') {
+          const errors = Object.entries(errorData)
+            .map(([key, value]) => {
+              const errorText = Array.isArray(value) ? value.join(', ') : String(value);
+              return `${key}: ${errorText}`;
+            })
+            .join('; ');
+          setShowMessage(errors || "Failed to update expense. Please check your input.");
+        } else {
+          setShowMessage("Failed to update expense. Please try again.");
+        }
+      } else {
+        setShowMessage("Failed to update expense. Please try again.");
+      }
+      setTimeout(() => setShowError(false), 5000);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   // Delete api call
-  const deleteExpensesData = async ()=>{
+  const deleteExpensesData = async () => {
     try {
       const accessToken = getToken("accessToken");
       const expensesId = localStorage.getItem("expensesId");
-      if (accessToken && expensesId){
-        const response = await axios.delete(`${BASE_API_URL}/finances/expenses/${expensesId}/`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-        
-        if (response.status == 204) {
-          setShowSuccess(true);
-          setShowMessage("Expenses deleted successfully.");
-          getExpensesData(page,rowsPerPage)
-          handleDeleteExpensesClose();
-        } 
+      if (!accessToken || !expensesId) {
+        setShowError(true);
+        setShowMessage("Authentication required or expense not selected.");
+        return;
       }
       
+      const response = await axios.delete(`${BASE_API_URL}/finances/expenses/${expensesId}/`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      
+      if (response.status == 204) {
+        setShowSuccess(true);
+        setShowMessage("Expenses deleted successfully.");
+        getExpensesData(page, rowsPerPage);
+        handleDeleteExpensesClose();
+        setTimeout(() => setShowSuccess(false), 3000);
+      }
     } catch (error) {
+      console.error("Error deleting expense:", error);
       setShowError(true);
-      setShowMessage("Expenses doesn't deleted.");
+      
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+        setShowMessage("Cannot connect to server. Please make sure the backend server is running.");
+      } else {
+        setShowMessage(error.response?.data?.error || error.response?.data?.detail || "Failed to delete expense.");
+      }
+      setTimeout(() => setShowError(false), 5000);
     }
-  }
+  };
 
  
 
@@ -397,21 +488,33 @@ const [showSuccess, setShowSuccess] = useState(false);
                 </TableRow>
               </TableHead>
               <TableBody>
-                {expensesData && 
-                  expensesData.map((data, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{data.name}</TableCell>
-                      <TableCell>{data.amount}</TableCell>
-                      <TableCell>{data.date}</TableCell>
-                      <TableCell>{data.purchased_by?.name}</TableCell>
-                      <TableCell>{data.purchased_from}</TableCell>
-                      <TableCell>{data.bank_account?.account_holder_name}</TableCell>
-                      <TableCell>{data.payment_mode}</TableCell>
-                      <TableCell>{data.payment_id}</TableCell>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : !expensesData || expensesData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center">
+                      No expenses found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  expensesData.map((data) => (
+                    <TableRow key={data.id}>
+                      <TableCell>{data.name || "N/A"}</TableCell>
+                      <TableCell>{data.amount || "N/A"}</TableCell>
+                      <TableCell>{data.date ? new Date(data.date).toLocaleDateString("en-GB") : "N/A"}</TableCell>
+                      <TableCell>{data.purchased_by?.name || "N/A"}</TableCell>
+                      <TableCell>{data.purchased_from || "N/A"}</TableCell>
+                      <TableCell>{data.bank_account?.account_holder_name || "N/A"}</TableCell>
+                      <TableCell>{data.payment_mode || "N/A"}</TableCell>
+                      <TableCell>{data.payment_id || "N/A"}</TableCell>
                       <TableCell>
                         <IconButton
                           onClick={() => handleViewExpensesOpen(data)}
-                          aria-label="edit"
+                          aria-label="view"
                           color="success"
                         >
                           <RemoveRedEyeIcon />
@@ -433,7 +536,8 @@ const [showSuccess, setShowSuccess] = useState(false);
                         </IconButton>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ))
+                )}
               </TableBody>
             </Table>
 
@@ -591,13 +695,13 @@ const [showSuccess, setShowSuccess] = useState(false);
                 </Grid2>
               </Grid2>
               <div className="flex gap-3 flex-wrap justify-end">
-                <CloseBtn onClick={handleCreateExpensesClose}>Close</CloseBtn>
+                <CloseBtn onClick={handleCreateExpensesClose} disabled={submitting}>Close</CloseBtn>
                 <PrimaryBtn
                     type={"Submit"}
-                    disabled={isSubmitting}
-                    className={`${isSubmitting ? " cursor-wait  " : ""}`}
+                    disabled={submitting || isSubmitting}
+                    className={`${(submitting || isSubmitting) ? " cursor-wait  " : ""}`}
                   >
-                    {isSubmitting ? "Submitting" : "Submit"}
+                    {(submitting || isSubmitting) ? "Submitting..." : "Submit"}
                   </PrimaryBtn>
               </div>
             </div>
@@ -746,13 +850,13 @@ const [showSuccess, setShowSuccess] = useState(false);
                 </Grid2>
               </Grid2>
               <div className="flex gap-3 flex-wrap justify-end">
-                <CloseBtn onClick={handleEditExpensesClose}>Close</CloseBtn>
+                <CloseBtn onClick={handleEditExpensesClose} disabled={submitting}>Close</CloseBtn>
                 <PrimaryBtn
                     type={"Submit"}
-                    disabled={isSubmitting}
-                    className={`${isSubmitting ? " cursor-wait  " : ""}`}
+                    disabled={submitting || isSubmitting}
+                    className={`${(submitting || isSubmitting) ? " cursor-wait  " : ""}`}
                   >
-                    {isSubmitting ? "Submitting" : "Submit"}
+                    {(submitting || isSubmitting) ? "Submitting..." : "Submit"}
                   </PrimaryBtn>
               </div>
             </div>
@@ -762,7 +866,12 @@ const [showSuccess, setShowSuccess] = useState(false);
         {/* Delete Expenses Modal */}
         <ModalComp open={deleteExpensesOpen} onClose={handleDeleteExpensesClose}>
           <div className="w-full ">
-            <div>Do you want to delete ?</div>
+            <div>Do you want to delete this expense?</div>
+            {expensesData.find(e => e.id === parseInt(localStorage.getItem("expensesId"))) && (
+              <div className="mt-2 text-gray-600">
+                Expense: <strong>{expensesData.find(e => e.id === parseInt(localStorage.getItem("expensesId")))?.name}</strong>
+              </div>
+            )}
             <div className="flex mt-8 justify-end gap-4">
               <CloseBtn
                 onClick={handleDeleteExpensesClose}
@@ -819,7 +928,7 @@ const [showSuccess, setShowSuccess] = useState(false);
                   <div className="font-bold">Date</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>26-03-25</div>
+                  <div>{expensesDetailsData.date ? new Date(expensesDetailsData.date).toLocaleDateString("en-GB") : "N/A"}</div>
                 </Grid2>
               </Grid2>
 

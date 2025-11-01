@@ -26,7 +26,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteBtn from "../../components/Buttons/DeleteBtn";
 import ModalComp from "../../components/Modal/ModalComp";
 import BASE_API_URL from "../../data";
-import { set, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 
 import { EMAIL_REGEX, PASSWORD_REGEX, PHONE_REGEX } from "../../utils";
 import axios from "axios";
@@ -96,11 +96,15 @@ const SelectBankAccount = React.forwardRef(
       </label>
       <select name={name} ref={ref} onChange={onChange} onBlur={onBlur}>
         <option value="">Select {selectOption}</option>
-        {options.map((option, index) => (
-          <option key={index} value={option.id}>
-            {option.account_holder_name}
-          </option>
-        ))}
+        {options && options.length > 0 ? (
+          options.map((option, index) => (
+            <option key={option.id || index} value={option.id}>
+              {option.account_holder_name || option.name || 'N/A'}
+            </option>
+          ))
+        ) : (
+          <option value="" disabled>No bank accounts available</option>
+        )}
       </select>
     </>
   )
@@ -111,6 +115,8 @@ const Income = () => {
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Handle page change
   const handleChangePage = (_, newPage) => {
@@ -135,7 +141,9 @@ const Income = () => {
 
   // Delete Income Modal
   const [deleteIncomeOpen, setDeleteIncomeOpen] = useState(false);
+  const [selectedIncome, setSelectedIncome] = useState(null);
   const handleDeleteIncomeOpen = (data) => {
+    setSelectedIncome(data);
     if (localStorage.getItem("incomeId")) {
       localStorage.removeItem("incomeId");
     }
@@ -144,6 +152,7 @@ const Income = () => {
   };
   const handleDeleteIncomeClose = () => {
     setDeleteIncomeOpen(false);
+    setSelectedIncome(null);
   };
 
   // Employee data variable
@@ -188,26 +197,34 @@ const Income = () => {
   };
 
   // To fetch the income data list
-  const getIncomeData = async (page, rowsPerPage) => {
+  const getIncomeData = async (pageNumber, pageSize) => {
     try {
+      setLoading(true);
       const accessToken = getToken("accessToken");
       if (accessToken) {
         const response = await axios.get(`${BASE_API_URL}/finances/incomes/`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
-
           params: {
-            page: page + 1,
-            page_size: rowsPerPage,
+            page: pageNumber + 1,
+            page_size: pageSize,
           },
         });
-        if (response.status == 200) {
-          setIncomeData(response.data.results);
-          setCount(response.data.count);
+        if (response.status === 200) {
+          setIncomeData(response.data.results || []);
+          setCount(response.data.count || 0);
         }
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error("Error fetching incomes:", error);
+      setShowError(true);
+      setShowMessage("Failed to fetch income data.");
+      setIncomeData([]);
+      setCount(0);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -263,10 +280,14 @@ const Income = () => {
   };
 
   // get bankaccount name data
-  const [BankaccountNameData, setBankaccountNameData] = useState();
+  const [BankaccountNameData, setBankaccountNameData] = useState([]);
   const getBankaccountNameData = async () => {
     try {
       const accessToken = getToken("accessToken");
+      if (!accessToken) {
+        console.error("No access token found for bank accounts");
+        return;
+      }
       const response = await axios.get(
         `${BASE_API_URL}/finances/bank-accounts-name/`,
         {
@@ -275,8 +296,11 @@ const Income = () => {
           },
         }
       );
-      setBankaccountNameData(response.data);
-    } catch (error) {}
+      setBankaccountNameData(response.data || []);
+    } catch (error) {
+      console.error("Error fetching bank account names:", error);
+      setBankaccountNameData([]);
+    }
   };
 
   const {
@@ -292,8 +316,21 @@ const Income = () => {
 
   // Post API Call
   const createIncomeForm = async (data) => {
+    // Prevent multiple submissions
+    if (submitting) {
+      return;
+    }
+    
     try {
+      setSubmitting(true);
       const accessToken = getToken("accessToken");
+      if (!accessToken) {
+        setShowError(true);
+        setShowMessage("Authentication required. Please login again.");
+        setSubmitting(false);
+        return;
+      }
+      
       const response = await axios.post(
         `${BASE_API_URL}/finances/incomes/`,
         data,
@@ -304,11 +341,14 @@ const Income = () => {
         }
       );
 
-      if (response.status == 201) {
+      if (response.status === 201) {
         setShowSuccess(true);
         setShowMessage("Income created successfully.");
-        getIncomeData(page, rowsPerPage);
+        setPage(0); // Go back to first page to see new income
+        getIncomeData(0, rowsPerPage);
         reset();
+        handleCreateIncomeClose();
+        setTimeout(() => setShowSuccess(false), 3000);
       } else {
         setShowError(true);
         setShowMessage("Income doesn't created.");
@@ -317,7 +357,7 @@ const Income = () => {
       if (error.response) {
         const data = error.response?.data;
 
-        // //  single string error
+        // single string error
         if (data.detail) {
           setShowMessage(data.detail);
         }
@@ -326,9 +366,7 @@ const Income = () => {
           setShowMessage(data.error);
         }
         // serializer field errors (dict of arrays)
-        else if (data.user?.email) {
-          setShowMessage("Employee with this email is already exist.");
-        } else if (typeof data === "object") {
+        else if (typeof data === "object") {
           let messages = [];
 
           for (const field in data) {
@@ -336,13 +374,17 @@ const Income = () => {
               messages.push(`${data[field][0]}`);
             }
           }
-          setShowMessage(messages);
+          setShowMessage(messages.join(', '));
         } else {
           setShowMessage("Something went wrong. Please try again.");
         }
+      } else {
+        setShowMessage("Failed to create income. Please try again.");
       }
       setShowError(true);
-      //console.log(error.response)
+      setTimeout(() => setShowError(false), 5000);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -361,12 +403,12 @@ const Income = () => {
             },
           }
         );
-        //console.log(response)
-        if (response.status == 200) {
+        if (response.status === 200) {
           getIncomeData(page, rowsPerPage);
           setShowSuccess(true);
           setShowMessage("Income edited successfully.");
           handleEditIncomeClose();
+          setTimeout(() => setShowSuccess(false), 3000);
         }
       }
     } catch (error) {
@@ -424,16 +466,18 @@ const Income = () => {
           }
         );
 
-        if (response.status == 204) {
+        if (response.status === 204) {
           getIncomeData(page, rowsPerPage);
           setShowSuccess(true);
           setShowMessage("Income deleted successfully.");
           handleDeleteIncomeClose();
+          setTimeout(() => setShowSuccess(false), 3000);
         }
       }
     } catch (error) {
       setShowError(true);
-      setShowMessage("Income doesn't deleted.");
+      setShowMessage(error.response?.data?.error || error.response?.data?.detail || "Failed to delete income.");
+      setTimeout(() => setShowError(false), 5000);
     }
   };
 
@@ -493,21 +537,33 @@ const Income = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {incomeData &&
-                  incomeData.map((data, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{data.client_name?.name}</TableCell>
-                      <TableCell>{data.project_name?.title}</TableCell>
-                      <TableCell>{data.amount}</TableCell>
-                      <TableCell>{data.payment_mode}</TableCell>
-                      <TableCell>{data.income_date}</TableCell>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : !incomeData || incomeData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      No income records found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  incomeData.map((data) => (
+                    <TableRow key={data.id}>
+                      <TableCell>{data.client_name?.name || "N/A"}</TableCell>
+                      <TableCell>{data.project_name?.title || "N/A"}</TableCell>
+                      <TableCell>{data.amount || "N/A"}</TableCell>
+                      <TableCell>{data.payment_mode || "N/A"}</TableCell>
+                      <TableCell>{data.income_date || "N/A"}</TableCell>
                       <TableCell>
-                        {data.bank_account?.account_holder_name}
+                        {data.bank_account?.account_holder_name || "N/A"}
                       </TableCell>
                       <TableCell>
                         <IconButton
                           onClick={() => handleViewIncomeOpen(data)}
-                          aria-label="edit"
+                          aria-label="view"
                           color="success"
                         >
                           <RemoveRedEyeIcon />
@@ -529,7 +585,8 @@ const Income = () => {
                         </IconButton>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ))
+                )}
               </TableBody>
             </Table>
 
@@ -696,13 +753,13 @@ const Income = () => {
               </Grid2>
 
               <div className="flex gap-3 flex-wrap justify-end">
-                <CloseBtn onClick={handleCreateIncomeClose}>Close</CloseBtn>
+                <CloseBtn onClick={handleCreateIncomeClose} disabled={submitting}>Close</CloseBtn>
                 <PrimaryBtn
                   type={"Submit"}
-                  disabled={isSubmitting}
-                  className={`${isSubmitting ? " cursor-wait  " : ""}`}
+                  disabled={submitting || isSubmitting}
+                  className={`${(submitting || isSubmitting) ? " cursor-wait  " : ""}`}
                 >
-                  {isSubmitting ? "Submitting" : "Submit"}
+                  {(submitting || isSubmitting) ? "Submitting..." : "Submit"}
                 </PrimaryBtn>
               </div>
             </div>
@@ -875,7 +932,12 @@ const Income = () => {
         {/* Delete Income Modal */}
         <ModalComp open={deleteIncomeOpen} onClose={handleDeleteIncomeClose}>
           <div className="w-full ">
-            <div>Do you wand to delete ?</div>
+            <div>Do you want to delete this income record?</div>
+            {selectedIncome && (
+              <div className="mt-2 text-gray-600">
+                Income: <strong>₹{selectedIncome.amount} - {selectedIncome.income_date}</strong>
+              </div>
+            )}
             <div className="flex mt-8 justify-end gap-4">
               <CloseBtn
                 onClick={handleDeleteIncomeClose}
@@ -1018,3 +1080,4 @@ const Income = () => {
 };
 
 export default Income;
+

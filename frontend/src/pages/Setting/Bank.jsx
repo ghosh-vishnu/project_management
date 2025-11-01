@@ -24,7 +24,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteBtn from "../../components/Buttons/DeleteBtn";
 import ModalComp from "../../components/Modal/ModalComp";
-import { set, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import ErrorAlert from "../../components/Alert/ErrorAlert";
 import SuccessAlert from "../../components/Alert/SuccessAlert";
 import axios from "axios";
@@ -72,9 +72,11 @@ const Bank = () => {
   
 
   // Pagination variables
-  const [count, setCount]= useState(0)
+  const [count, setCount] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Handle page change
   const handleChangePage = (_, newPage) => {
@@ -108,8 +110,9 @@ const Bank = () => {
   };
 
   // To fetch the Bank data list
-  const getBankData = async (pageNumber,pageSize ) => {
+  const getBankData = async (pageNumber, pageSize) => {
     try {
+      setLoading(true);
       const accessToken = getToken("accessToken");
       if (accessToken) {
         const response = await axios.get(
@@ -118,22 +121,36 @@ const Bank = () => {
             headers: {
               Authorization: `Bearer ${accessToken}`,
             },
-            params:{
-            page: pageNumber + 1, 
-            page_size: pageSize,
+            params: {
+              page: pageNumber + 1,
+              page_size: pageSize,
             }
           }
         );
-        setBankData(response.data.results);
-        setCount(response.data.count)
+        setBankData(response.data.results || []);
+        setCount(response.data.count || 0);
       }
     } catch (error) {
-      // console.log(error)
+      console.error("Error fetching bank accounts:", error);
+      
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+        setShowMessage("Cannot connect to server. Please make sure the backend server is running.");
+      } else {
+        setShowMessage("Failed to fetch bank accounts data.");
+      }
+      
+      setShowError(true);
+      setBankData([]);
+      setCount(0);
+      setTimeout(() => setShowError(false), 5000);
+    } finally {
+      setLoading(false);
     }
   };
-  useEffect(()=>{
-    getBankData(page, rowsPerPage)
-  },[page, rowsPerPage])
+  
+  useEffect(() => {
+    getBankData(page, rowsPerPage);
+  }, [page, rowsPerPage]);
 
   // Edit Bank Modal
   const [editBankOpen, setEditBankOpen] = useState(false);
@@ -197,6 +214,14 @@ const Bank = () => {
         setShowMessage("Bank doesn't edited.");
       }
     } catch (error) {
+      console.error("Error updating bank account:", error);
+      
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+        setShowMessage("Cannot connect to server. Please make sure the backend server is running.");
+        setShowError(true);
+        return;
+      }
+      
       if (error.response) {
         const data = error.response?.data;
 
@@ -223,16 +248,30 @@ const Bank = () => {
         } else {
           setShowMessage("Something went wrong. Please try again.");
         }
+      } else {
+        setShowMessage("Failed to update bank account. Please try again.");
       }
       setShowError(true);
-      // console.log(error);
     }
   };
 
   // Post API Call
   const createBankForm = async (data) => {
+    // Prevent multiple submissions
+    if (submitting) {
+      return;
+    }
+    
     try {
+      setSubmitting(true);
       const accessToken = getToken("accessToken");
+      if (!accessToken) {
+        setShowError(true);
+        setShowMessage("Authentication required. Please login again.");
+        setSubmitting(false);
+        return;
+      }
+      
       const response = await axios.post(
         `${BASE_API_URL}/finances/bank-accounts/`,
         data,
@@ -243,21 +282,33 @@ const Bank = () => {
         }
       );
 
-      if (response.status == 201) {
+      if (response.status === 201) {
         setShowSuccess(true);
         setShowMessage("Bank created successfully.");
-        getBankData(page, rowsPerPage)
+        setPage(0); // Go back to first page to see new bank account
+        getBankData(0, rowsPerPage);
         reset();
-        handleCreateBankClose()
+        handleCreateBankClose();
+        setTimeout(() => setShowSuccess(false), 3000);
       } else {
         setShowError(true);
         setShowMessage("Bank doesn't created.");
       }
     } catch (error) {
+      console.error("Error creating bank account:", error);
+      
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+        setShowMessage("Cannot connect to server. Please make sure the backend server is running.");
+        setShowError(true);
+        setSubmitting(false);
+        setTimeout(() => setShowError(false), 5000);
+        return;
+      }
+      
       if (error.response) {
         const data = error.response?.data;
 
-        // //  single string error
+        // single string error
         if (data.detail) {
           setShowMessage(data.detail);
         }
@@ -266,9 +317,7 @@ const Bank = () => {
           setShowMessage(data.error);
         }
         // serializer field errors (dict of arrays)
-        else if (data.user?.email) {
-          setShowMessage("Employee with this email is already exist.");
-        } else if (typeof data === "object") {
+        else if (typeof data === "object") {
           let messages = [];
 
           for (const field in data) {
@@ -276,13 +325,17 @@ const Bank = () => {
               messages.push(`${data[field][0]}`);
             }
           }
-          setShowMessage(messages);
+          setShowMessage(messages.join(', '));
         } else {
           setShowMessage("Something went wrong. Please try again.");
         }
+      } else {
+        setShowMessage("Failed to create bank account. Please try again.");
       }
       setShowError(true);
-      // console.log(error);
+      setTimeout(() => setShowError(false), 5000);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -294,7 +347,9 @@ const Bank = () => {
 
   // Delete Bank Modal
   const [deleteBankOpen, setDeleteBankOpen] = useState(false);
+  const [selectedBank, setSelectedBank] = useState(null);
   const handleDeleteBankOpen = (data) => {
+    setSelectedBank(data);
     if (localStorage.getItem("bankaccounts")) {
       localStorage.removeItem("bankaccounts");
     }
@@ -303,6 +358,7 @@ const Bank = () => {
   };
   const handleDeleteBankClose = () => {
     setDeleteBankOpen(false);
+    setSelectedBank(null);
   };
 
   // View Bank Modal
@@ -333,16 +389,25 @@ const Bank = () => {
           }
         );
 
-        if (response.status == 204) {
+        if (response.status === 204) {
           setShowSuccess(true);
           setShowMessage("Bank deleted successfully.");
-          getBankData(page, rowsPerPage)
+          getBankData(page, rowsPerPage);
           handleDeleteBankClose();
+          setTimeout(() => setShowSuccess(false), 3000);
         }
       }
     } catch (error) {
+      console.error("Error deleting bank account:", error);
+      
+      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+        setShowMessage("Cannot connect to server. Please make sure the backend server is running.");
+      } else {
+        setShowMessage(error.response?.data?.error || error.response?.data?.detail || "Failed to delete bank account.");
+      }
+      
       setShowError(true);
-      setShowMessage("Bank doesn't deleted.");
+      setTimeout(() => setShowError(false), 5000);
     }
   };
 
@@ -402,19 +467,31 @@ const Bank = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {bankData &&
-                  bankData.map((data, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{data.account_holder_name}</TableCell>
-                      <TableCell>{data.bank_name}</TableCell>
-                      <TableCell>{data.branch}</TableCell>
-                      <TableCell>{data.contact_number}</TableCell>
-                      <TableCell>{data.status}</TableCell>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : !bankData || bankData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      No bank accounts found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  bankData.map((data) => (
+                    <TableRow key={data.id}>
+                      <TableCell>{data.account_holder_name || "N/A"}</TableCell>
+                      <TableCell>{data.bank_name || "N/A"}</TableCell>
+                      <TableCell>{data.branch || "N/A"}</TableCell>
+                      <TableCell>{data.contact_number || "N/A"}</TableCell>
+                      <TableCell>{data.status || "N/A"}</TableCell>
 
                       <TableCell>
                         <IconButton
                           onClick={() => handleViewBankOpen(data)}
-                          aria-label="edit"
+                          aria-label="view"
                           color="success"
                         >
                           <RemoveRedEyeIcon />
@@ -436,7 +513,8 @@ const Bank = () => {
                         </IconButton>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ))
+                )}
               </TableBody>
             </Table>
 
@@ -630,13 +708,13 @@ const Bank = () => {
               </Grid2>
 
               <div className="flex gap-3 flex-wrap justify-end">
-                <CloseBtn onClick={handleCreateBankClose}>Close</CloseBtn>
+                <CloseBtn onClick={handleCreateBankClose} disabled={submitting}>Close</CloseBtn>
                 <PrimaryBtn
                   type={"Submit"}
-                  disabled={isSubmitting}
-                  className={`${isSubmitting ? " cursor-wait  " : ""}`}
+                  disabled={submitting || isSubmitting}
+                  className={`${(submitting || isSubmitting) ? " cursor-wait  " : ""}`}
                 >
-                  {isSubmitting ? "Submitting" : "Submit"}
+                  {(submitting || isSubmitting) ? "Submitting..." : "Submit"}
                 </PrimaryBtn>
               </div>
             </div>
@@ -833,10 +911,15 @@ const Bank = () => {
           </form>
         </ModalComp>
 
-        {/* Delete client Modal */}
+        {/* Delete Bank Modal */}
         <ModalComp open={deleteBankOpen} onClose={handleDeleteBankClose}>
           <div className="w-full ">
-            <div>Do you wand to delete ?</div>
+            <div>Do you want to delete this bank account?</div>
+            {selectedBank && (
+              <div className="mt-2 text-gray-600">
+                Bank: <strong>{selectedBank.account_holder_name} - {selectedBank.bank_name}</strong>
+              </div>
+            )}
             <div className="flex mt-8 justify-end gap-4">
               <CloseBtn
                 onClick={handleDeleteBankClose}

@@ -49,6 +49,12 @@ INSTALLED_APPS = [
     'proposal',
     'contracts',
     'clients',
+    'tasks',
+    'todo',
+    'tickets',
+    'setting',
+    'finance',
+    'invoices',
 ]
 
 MIDDLEWARE = [

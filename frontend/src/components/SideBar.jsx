@@ -802,7 +802,7 @@ export default function Sidebar({ children }) {
                 
 
                 <SideBarListItem to={'/setting'} className={'/setting'}>
-                  <SettingsIcon /> Setting
+                    <SettingsIcon /> Add Bank
                 </SideBarListItem>
 
               </ul>
