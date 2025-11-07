@@ -6,7 +6,7 @@ from leads.models import Lead
 class LeadMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lead
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'email']
 
 
 class ContractListSerializer(serializers.ModelSerializer):
@@ -14,15 +14,16 @@ class ContractListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Contract
-        fields = ['id', 'name', 'lead_name', 'start_date', 'end_date', 'status', 'budget', 'description']
+        fields = ['id', 'name', 'lead_name', 'proposal_id', 'start_date', 'end_date', 'status', 'budget', 'description']
 
 
 class ContractCreateSerializer(serializers.ModelSerializer):
     lead_name_id = serializers.IntegerField(write_only=True)
+    proposal_id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = Contract
-        fields = ['id', 'name', 'lead_name_id', 'start_date', 'end_date', 'status', 'budget', 'description']
+        fields = ['id', 'name', 'lead_name_id', 'proposal_id', 'start_date', 'end_date', 'status', 'budget', 'description']
 
     def validate(self, attrs):
         start = attrs.get('start_date')

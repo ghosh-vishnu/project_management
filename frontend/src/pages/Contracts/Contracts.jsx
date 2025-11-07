@@ -35,10 +35,10 @@ import { getToken } from "../../Token";
 
 // select for lead
 const SelectOption = React.forwardRef(
-  ({ onChange, onBlur, name, label, options = [],selectOption }, ref) => (
+  ({ onChange, onBlur, name, label, options = [],selectOption, defaultValue }, ref) => (
     <>
     <label>{label} <span className="text-red-600">*</span> </label>
-    <select name={name} ref={ref} onChange={onChange} onBlur={onBlur}>
+    <select name={name} ref={ref} onChange={onChange} onBlur={onBlur} defaultValue={defaultValue}>
         <option value="">Select {selectOption}</option>
         {options.map((option, index) => (
           <option key={index} value={option.id}>
@@ -123,10 +123,22 @@ const Contracts = () => {
       localStorage.removeItem('contractsId')
     }
     localStorage.setItem('contractsId', data.id)
+    
+    // Use proposal_id from contract data if available, otherwise find by email match
+    let proposalId = data.proposal_id || '';
+    if (!proposalId && data?.lead_name?.email && proposalsFullData.length > 0) {
+      // Fallback: find proposal by matching email (get most recent)
+      const matchingProposals = proposalsFullData.filter(p => p.client_lead === data.lead_name.email);
+      if (matchingProposals.length > 0) {
+        const sortedProposals = matchingProposals.sort((a, b) => b.id - a.id);
+        proposalId = sortedProposals[0].id;
+      }
+    }
+    
     reset(
       {
         name: data.name,
-        lead_name_id: data.lead_name?.id,
+        lead_name_id: proposalId || data.proposal_id || '',
         start_date : data.start_date,
         end_date: data.end_date,
         status : data.status,
@@ -185,17 +197,48 @@ useEffect(()=>{
 
 
 
-//get leadname data
-const[leadNameData,setLeadNameData] = useState();
-const getLeadNameData = async () =>{
+//get proposal name data
+const[proposalNameData,setProposalNameData] = useState();
+const[proposalsFullData, setProposalsFullData] = useState([]); // Store full proposals data
+const[leadsData, setLeadsData] = useState([]); // Store leads data for email to ID mapping
+
+const getProposalNameData = async () =>{
   try {
     const accessToken = getToken("accessToken");
-    const response = await axios.get(`${BASE_API_URL}/peoples/leads-name/`,{
+    const response = await axios.get(`${BASE_API_URL}/proposals/`,{
       headers:{
         Authorization: `Bearer ${accessToken}`,
       },
+      params: {
+        page_size: 1000, // Get all proposals
+      },
     });
-    setLeadNameData(response.data);
+    // Transform proposals data to match dropdown format
+    if (response.data && response.data.results) {
+      // Store full data for lookup
+      setProposalsFullData(response.data.results);
+      
+      const proposals = response.data.results.map(proposal => ({
+        id: proposal.id,
+        name: proposal.proposal_title || `Proposal ${proposal.id}`,
+        email: proposal.client_lead, // Store email for matching
+      }));
+      setProposalNameData(proposals);
+    }
+  } catch (error) {}
+};
+
+// Fetch leads data to map email to lead ID
+const getLeadsData = async () => {
+  try {
+    const accessToken = getToken("accessToken");
+    const response = await axios.get(`${BASE_API_URL}/peoples/leads/`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { page_size: 1000 },
+    });
+    if (response.data && response.data.results) {
+      setLeadsData(response.data.results);
+    }
   } catch (error) {}
 };
 
@@ -210,10 +253,61 @@ const getLeadNameData = async () =>{
   const [viewcontractsOpen, setViewcontractsOpen] = useState(false);
   //contracts details vars
   const[contractDetailsData,setcontractsDetailsData] = useState({});
+  const[proposalNameForView, setProposalNameForView] = useState('');
+  
   //get contracts details dat
   const handleViewcontractsOpen = async(data) => {
     setViewcontractsOpen(true);
     setcontractsDetailsData(data);
+    
+    // Use proposal_id if available (exact match)
+    if (data.proposal_id && proposalsFullData.length > 0) {
+      const proposal = proposalsFullData.find(p => p.id === data.proposal_id);
+      if (proposal) {
+        setProposalNameForView(proposal.proposal_title || `Proposal ${proposal.id}`);
+        return;
+      }
+    }
+    
+    // Fallback: Find proposal name based on lead email
+    // Get most recent proposal if multiple exist
+    if (data?.lead_name?.email && proposalsFullData.length > 0) {
+      const leadEmail = data.lead_name.email;
+      const matchingProposals = proposalsFullData.filter(p => p.client_lead === leadEmail);
+      if (matchingProposals.length > 0) {
+        // Sort by ID descending to get most recent, then get first
+        const sortedProposals = matchingProposals.sort((a, b) => b.id - a.id);
+        const proposal = sortedProposals[0];
+        setProposalNameForView(proposal.proposal_title || `Proposal ${proposal.id}`);
+      } else {
+        // If not found in cached data, try fetching fresh
+        try {
+          const accessToken = getToken("accessToken");
+          if (accessToken) {
+            const response = await axios.get(`${BASE_API_URL}/proposals/`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              params: { page_size: 1000 },
+            });
+            if (response.data && response.data.results) {
+              const matchingProposals = response.data.results.filter(p => p.client_lead === leadEmail);
+              if (matchingProposals.length > 0) {
+                const sortedProposals = matchingProposals.sort((a, b) => b.id - a.id);
+                const proposal = sortedProposals[0];
+                setProposalNameForView(proposal.proposal_title || `Proposal ${proposal.id}`);
+              } else {
+                setProposalNameForView(data.lead_name?.name || 'N/A');
+              }
+            } else {
+              setProposalNameForView(data.lead_name?.name || 'N/A');
+            }
+          }
+        } catch (error) {
+          setProposalNameForView(data.lead_name?.name || 'N/A');
+        }
+      }
+    } else {
+      setProposalNameForView(data.lead_name?.name || 'N/A');
+    }
   };
   const handleViewcontractsClose = () => {
     setViewcontractsOpen(false);
@@ -238,8 +332,35 @@ const getLeadNameData = async () =>{
           return;
         }
       }
+      
+      // data.lead_name_id contains the proposal ID (from SelectOption)
+      // Find the proposal to get its email, then find matching lead
+      let leadId = null;
+      let proposalId = data.lead_name_id;
+      
+      if (proposalId) {
+        // Find the proposal by ID
+        const proposal = proposalsFullData.find(p => p.id === parseInt(proposalId));
+        if (proposal && proposal.client_lead) {
+          // Find lead by email
+          const lead = leadsData.find(l => l.email === proposal.client_lead);
+          if (lead) {
+            leadId = lead.id;
+          } else {
+            setShowError(true);
+            setShowMessage("Lead not found for the selected proposal.");
+            return;
+          }
+        } else {
+          setShowError(true);
+          setShowMessage("Proposal not found.");
+          return;
+        }
+      }
+      
+      const payload = { ...data, lead_name_id: leadId, proposal_id: proposalId };
       const accessToken = getToken("accessToken");
-      const response = await axios.post(`${BASE_API_URL}/contracts/`, data, {
+      const response = await axios.post(`${BASE_API_URL}/contracts/`, payload, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -302,10 +423,37 @@ const getLeadNameData = async () =>{
           return;
         }
       }
+      
+      // data.lead_name_id contains the proposal ID (from SelectOption)
+      // Find the proposal to get its email, then find matching lead
+      let leadId = null;
+      let proposalId = data.lead_name_id;
+      
+      if (proposalId) {
+        // Find the proposal by ID
+        const proposal = proposalsFullData.find(p => p.id === parseInt(proposalId));
+        if (proposal && proposal.client_lead) {
+          // Find lead by email
+          const lead = leadsData.find(l => l.email === proposal.client_lead);
+          if (lead) {
+            leadId = lead.id;
+          } else {
+            setShowError(true);
+            setShowMessage("Lead not found for the selected proposal.");
+            return;
+          }
+        } else {
+          setShowError(true);
+          setShowMessage("Proposal not found.");
+          return;
+        }
+      }
+      
+      const payload = { ...data, lead_name_id: leadId, proposal_id: proposalId };
       const accessToken = getToken("accessToken");
       const contractId = localStorage.getItem("contractsId");
       if (accessToken && contractId){
-        const response = await axios.put(`${BASE_API_URL}/contracts/${contractId}/`, data, {
+        const response = await axios.put(`${BASE_API_URL}/contracts/${contractId}/`, payload, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
@@ -329,7 +477,8 @@ const getLeadNameData = async () =>{
   useEffect(() => {
     // getContractsData(page, rowsPerPage);
    
-    getLeadNameData();
+    getProposalNameData();
+    getLeadsData();
    
   }, []);
 
@@ -414,7 +563,7 @@ const deleteContractData = async ()=>{
               <TableHead>
                 <TableRow className="bg-gray-200">
                   <TableCell>Contract Name</TableCell>
-                  <TableCell>Lead Name</TableCell>
+                  <TableCell>Proposal Name</TableCell>
                   <TableCell>Start Date</TableCell>
                   <TableCell>End Date</TableCell>
                   <TableCell>Status</TableCell>
@@ -426,7 +575,30 @@ const deleteContractData = async ()=>{
                   contractsData.map((data, index) => (
                     <TableRow key={index}>
                       <TableCell>{data.name}</TableCell>
-                      <TableCell>{data.lead_name?.name}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          // Use proposal_id if available (exact match)
+                          if (data.proposal_id && proposalsFullData.length > 0) {
+                            const proposal = proposalsFullData.find(p => p.id === data.proposal_id);
+                            if (proposal) {
+                              return proposal.proposal_title || `Proposal ${proposal.id}`;
+                            }
+                          }
+                          // Fallback: Find proposal name by matching lead email with proposal client_lead
+                          // Get most recent proposal (highest ID) if multiple exist
+                          if (data?.lead_name?.email && proposalsFullData.length > 0) {
+                            const matchingProposals = proposalsFullData.filter(p => p.client_lead === data.lead_name.email);
+                            if (matchingProposals.length > 0) {
+                              // Sort by ID descending to get most recent, then get first
+                              const sortedProposals = matchingProposals.sort((a, b) => b.id - a.id);
+                              const proposal = sortedProposals[0];
+                              return proposal.proposal_title || `Proposal ${proposal.id}`;
+                            }
+                            return data.lead_name?.name || 'N/A';
+                          }
+                          return data.lead_name?.name || 'N/A';
+                        })()}
+                      </TableCell>
                       <TableCell>{data.start_date}</TableCell>
                       <TableCell>{data.end_date}</TableCell>
                       <TableCell>{data.status}</TableCell>
@@ -509,9 +681,9 @@ const deleteContractData = async ()=>{
                   {...register("lead_name_id",{
                     required: "This field id required."
                   })}
-                  label="Lead Name"
-                  options={leadNameData}
-                  selectOption={"Lead Name"}
+                  label="Proposal Name"
+                  options={proposalNameData}
+                  selectOption={"Proposal Name"}
                 />
                 {errors.lead_name_id && (
                   <small className="text-red-600">{errors.lead_name_id.message}</small>)}
@@ -667,9 +839,9 @@ const deleteContractData = async ()=>{
                   {...register("lead_name_id",{
                     required: "This field id required."
                   })}
-                  label="Lead Name"
-                  options={leadNameData}
-                  selectOption={"Lead Name"}
+                  label="Proposal Name"
+                  options={proposalNameData}
+                  selectOption={"Proposal Name"}
                 />
                 {errors.lead_name_id && (
                   <small className="text-red-600">{errors.lead_name_id.message}</small>)}
@@ -835,10 +1007,10 @@ const deleteContractData = async ()=>{
                 className="border-b px-4 py-2 border-gray-500"
               >
                 <Grid2 size={4}>
-                  <div className="font-bold">Lead Name</div>
+                  <div className="font-bold">Proposal Name</div>
                 </Grid2>
                 <Grid2 size={8}>
-                  <div>{contractDetailsData.lead_name && contractDetailsData.lead_name.name}</div>
+                  <div>{proposalNameForView || (contractDetailsData.lead_name && contractDetailsData.lead_name.name) || 'N/A'}</div>
                 </Grid2>
               </Grid2>
 

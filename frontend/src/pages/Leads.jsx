@@ -361,7 +361,7 @@ const Leads = () => {
             <Table>
               <TableHead>
                 <TableRow className="bg-gray-200">
-                  <TableCell>Name</TableCell>
+                  <TableCell>Client Name</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Contact no.</TableCell>
                   <TableCell>Lead source</TableCell>
@@ -437,10 +437,10 @@ const Leads = () => {
                 <Grid2 container spacing={2}>
                   <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
                     <label htmlFor="leadName">
-                      Name <span className="text-red-600">*</span>
+                      Client Name <span className="text-red-600">*</span>
                     </label>
                     <input
-                      placeholder="Lead Name"
+                      placeholder="Client Name"
                       type="text"
                       id="leadName"
                       {...register("name", {
@@ -602,10 +602,10 @@ const Leads = () => {
                 <Grid2 container spacing={2}>
                   <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
                     <label htmlFor="leadName">
-                      Name <span className="text-red-600">*</span>
+                      Client Name <span className="text-red-600">*</span>
                     </label>
                     <input
-                      placeholder="Lead Name"
+                      placeholder="Client Name"
                       type="text"
                       id="leadName"
                       {...register("name", {
@@ -786,7 +786,7 @@ const Leads = () => {
                   className="border-b px-4 py-2 border-gray-500"
                 >
                   <Grid2 size={4}>
-                    <div className="font-bold">Name</div>
+                    <div className="font-bold">Client Name</div>
                   </Grid2>
                   <Grid2 size={8}>
                     <div>{leadsDetailsData.name && leadsDetailsData.name}</div>

@@ -74,6 +74,7 @@ const Meetings = () => {
   const handleCreateMeetingsOpen = () => {
     setCreateForm({ name: "", lead: "", note: "", link: "", startAt: "", duration: 30, status: "scheduled" });
     setSelectedMeetingMembers([]);
+    setSelectedTeams([]);
     setCreateMeetingsOpen(true);
   };
   const handleCreateMeetingsClose = () => {
@@ -163,8 +164,196 @@ const Meetings = () => {
   }, []);
 
   const [selectedMeetingMembers, setSelectedMeetingMembers] = useState([]);
+  const [selectedTeams, setSelectedTeams] = useState([]);
   const [editForm, setEditForm] = useState({ id: null, name: "", lead: "", note: "", link: "", startAt: "", duration: 30, status: "scheduled" });
   const [createForm, setCreateForm] = useState({ name: "", lead: "", note: "", link: "", startAt: "", duration: 30, status: "scheduled" });
+
+  // Get filtered member options (excluding the lead)
+  const getFilteredMemberOptions = (leadId) => {
+    if (!leadId) return selectMultiOptions;
+    return selectMultiOptions.filter(opt => opt.value !== parseInt(leadId));
+  };
+
+  // Auto-add lead to members when lead is selected
+  useEffect(() => {
+    if (createForm.lead && createMeetingsOpen) {
+      const leadEmp = employeeNameData.find(emp => emp.id === parseInt(createForm.lead));
+      if (leadEmp) {
+        const leadOption = { value: leadEmp.id, label: leadEmp.name };
+        setSelectedMeetingMembers(prev => {
+          // Check if lead already exists in members
+          const leadAlreadyExists = prev.some(m => m.value === leadEmp.id);
+          if (leadAlreadyExists) {
+            // If lead exists, just ensure it's at the beginning (no duplicates)
+            const filtered = prev.filter(m => m.value !== leadEmp.id);
+            return [leadOption, ...filtered];
+          } else {
+            // If lead doesn't exist, add it at the beginning
+            return [leadOption, ...prev];
+          }
+        });
+      }
+    } else if (!createForm.lead && createMeetingsOpen) {
+      // If lead is cleared, remove it from members
+      setSelectedMeetingMembers(prev => prev.filter(m => {
+        return true; // Keep all members when lead is cleared
+      }));
+    }
+  }, [createForm.lead, createMeetingsOpen, employeeNameData]);
+
+  // Handle team selection - add all team members
+  const handleTeamSelection = (selectedTeamOptions) => {
+    setSelectedTeams(selectedTeamOptions || []);
+    
+    // Determine which form is active and get the lead
+    const currentLeadId = editMeetingsOpen ? editForm.lead : createForm.lead;
+    
+    // Get all unique members from selected teams
+    const allTeamMemberIds = new Set();
+    const allTeamMembers = [];
+    
+    selectedTeamOptions?.forEach(teamOption => {
+      const team = teamOptions.find(t => t.value === teamOption.value);
+      if (team && team.teamData && Array.isArray(team.teamData.team_members)) {
+        team.teamData.team_members.forEach(member => {
+          if (!allTeamMemberIds.has(member.id)) {
+            allTeamMemberIds.add(member.id);
+            allTeamMembers.push({ value: member.id, label: member.name });
+          }
+        });
+      }
+    });
+
+    // Merge with existing members, ensuring no duplicates
+    setSelectedMeetingMembers(prev => {
+      const existingIds = new Set(prev.map(m => m.value));
+      const leadId = currentLeadId ? parseInt(currentLeadId) : null;
+      
+      // Separate lead and other existing members
+      const leadMember = leadId ? prev.find(m => m.value === leadId) : null;
+      const otherMembers = prev.filter(m => m.value !== leadId);
+      
+      // Add new team members (excluding lead if it exists)
+      const newMembers = allTeamMembers.filter(m => {
+        // Don't add if already exists or if it's the lead
+        return !existingIds.has(m.value) && (!leadId || m.value !== leadId);
+      });
+      
+      // If lead exists, ensure it stays at the beginning
+      // If lead is in team members but not yet selected as lead, still don't add it here
+      // (it will be added when lead is selected)
+      if (leadMember) {
+        return [leadMember, ...otherMembers, ...newMembers];
+      } else {
+        // If no lead selected yet, but team member might become lead later
+        // So we add all members, and when lead is selected, it will be moved to front
+        return [...otherMembers, ...newMembers];
+      }
+    });
+  };
+
+  // Auto-add lead to members when lead is selected in edit form
+  useEffect(() => {
+    if (editForm.lead && editMeetingsOpen) {
+      const leadEmp = employeeNameData.find(emp => emp.id === parseInt(editForm.lead));
+      if (leadEmp) {
+        const leadOption = { value: leadEmp.id, label: leadEmp.name };
+        setSelectedMeetingMembers(prev => {
+          // Check if lead already exists in members
+          const leadAlreadyExists = prev.some(m => m.value === leadEmp.id);
+          if (leadAlreadyExists) {
+            // If lead exists, just ensure it's at the beginning (no duplicates)
+            const filtered = prev.filter(m => m.value !== leadEmp.id);
+            return [leadOption, ...filtered];
+          } else {
+            // If lead doesn't exist, add it at the beginning
+            return [leadOption, ...prev];
+          }
+        });
+      }
+    }
+  }, [editForm.lead, editMeetingsOpen, employeeNameData]);
+
+  // Handle meeting members change - ensure lead is always included
+  const handleMeetingMembersChange = (selectedMembers) => {
+    const currentLeadId = editMeetingsOpen ? editForm.lead : createForm.lead;
+    
+    if (currentLeadId) {
+      const leadId = parseInt(currentLeadId);
+      const leadEmp = employeeNameData.find(emp => emp.id === leadId);
+      
+      if (leadEmp) {
+        const leadOption = { value: leadEmp.id, label: leadEmp.name };
+        // Ensure lead is always in the list
+        const leadExists = selectedMembers?.some(m => m.value === leadId);
+        if (!leadExists) {
+          setSelectedMeetingMembers([leadOption, ...(selectedMembers || [])]);
+        } else {
+          // Keep lead at the beginning
+          const otherMembers = selectedMembers.filter(m => m.value !== leadId);
+          setSelectedMeetingMembers([leadOption, ...otherMembers]);
+        }
+      } else {
+        setSelectedMeetingMembers(selectedMembers || []);
+      }
+    } else {
+      setSelectedMeetingMembers(selectedMembers || []);
+    }
+  };
+
+  // Teams data
+  const [teamsData, setTeamsData] = useState([]);
+  const [teamOptions, setTeamOptions] = useState([]);
+  
+  // Fetch teams data
+  const getTeamsData = async () => {
+    try {
+      const accessToken = getToken("accessToken");
+      const response = await axios.get(
+        `${BASE_API_URL}/peoples/teams/`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          params: { page_size: 1000, is_active: 'true' },
+        }
+      );
+      const teams = response.data.results || [];
+      setTeamsData(teams);
+      
+      // Fetch detailed team info to get all members
+      const teamsWithDetails = await Promise.all(
+        teams.map(async (team) => {
+          try {
+            const detailResp = await axios.get(
+              `${BASE_API_URL}/peoples/teams/${team.id}/`,
+              {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              }
+            );
+            return detailResp.data;
+          } catch {
+            return team;
+          }
+        })
+      );
+      
+      const opts = teamsWithDetails.map((team) => ({
+        value: team.id,
+        label: team.name || `Team ${team.id}`,
+        teamData: team,
+      }));
+      setTeamOptions(opts);
+    } catch (err) {
+      // ignore silently for now
+    }
+  };
+
+  useEffect(() => {
+    getTeamsData();
+  }, []);
   return (
     <div>
       <div>
@@ -240,9 +429,21 @@ const Meetings = () => {
                                 const resp = await axios.get(`${BASE_API_URL}/meetings/${row.id}/`, { headers: { Authorization: `Bearer ${accessToken}` }});
                                 const d = resp.data;
                                 setEditForm({ id: d.id, name: d.name, lead: d.scheduled_by_employee?.id || "", note: d.note || "", link: d.meeting_link || "", startAt: d.start_at ? d.start_at.substring(0,16) : "", duration: d.duration_minutes || 30, status: d.status || "scheduled" });
-                                setSelectedMeetingMembers((d.attendee_employees || []).map((e)=>({ value: e.id, label: e.name })));
+                                const members = (d.attendee_employees || []).map((e)=>({ value: e.id, label: e.name }));
+                                // Ensure lead is at the beginning
+                                const leadId = d.scheduled_by_employee?.id;
+                                if (leadId) {
+                                  const leadMember = members.find(m => m.value === leadId);
+                                  const otherMembers = members.filter(m => m.value !== leadId);
+                                  setSelectedMeetingMembers(leadMember ? [leadMember, ...otherMembers] : members);
+                                } else {
+                                  setSelectedMeetingMembers(members);
+                                }
+                                setSelectedTeams([]);
                               } catch {
                                 setEditForm({ id: row.id, name: row.name, lead: row.scheduled_by_employee?.id || "", note: row.note || "", link: row.meeting_link || "", startAt: row.start_at ? row.start_at.substring(0,16) : "", duration: row.duration_minutes || 30, status: row.status || "scheduled" });
+                                setSelectedMeetingMembers([]);
+                                setSelectedTeams([]);
                               }
                               setEditMeetingsOpen(true);
                             }}
@@ -398,15 +599,70 @@ const Meetings = () => {
 
                 <Grid2 container spacing={2}>
                   <Grid2 size={12} className="inputData">
+                    <label htmlFor="AddTeams">
+                      Add Team <span className="text-gray-500">(Optional)</span>
+                    </label>
+                    <Select
+                      isMulti
+                      options={teamOptions}
+                      value={selectedTeams}
+                      onChange={handleTeamSelection}
+                      className="text-black"
+                      placeholder="Select teams to add all members..."
+                      styles={{
+                        control: (base, state) => ({
+                          ...base,
+                          borderRadius: "5px",
+                          borderColor: state.isFocused
+                            ? "#282C6C"
+                            : "rgb(145, 144, 144)",
+                          borderWidth: "2px",
+                          boxShadow: "none",
+                          padding: "0px 8px",
+                          "&:hover": { borderColor: "#282C6C" },
+                        }),
+
+                        menu: (base) => ({
+                          ...base,
+                          backgroundColor: "#fff",
+                          borderRadius: "5px",
+                        }),
+                        option: (base, state) => ({
+                          ...base,
+                          backgroundColor: state.isSelected
+                            ? "#282C6C"
+                            : state.isFocused
+                              ? "#0073E6"
+                              : "white",
+                          color: state.isSelected
+                            ? "white"
+                            : state.isFocused
+                              ? "white"
+                              : "black",
+                          padding: "5px 16px",
+                          cursor: "pointer",
+                          "&:active": {
+                            backgroundColor: "#2563EB",
+                          },
+                        }),
+                      }}
+                    />
+                    <small className="text-gray-500">Select teams to automatically add all team members to the meeting</small>
+                  </Grid2>
+                </Grid2>
+
+                <Grid2 container spacing={2}>
+                  <Grid2 size={12} className="inputData">
                     <label htmlFor="MeetingMembers">
                       Meeting members <span className="text-red-600">*</span>
                     </label>
                     <Select
                       isMulti
-                      options={selectMultiOptions}
+                      options={getFilteredMemberOptions(createForm.lead)}
                       value={selectedMeetingMembers}
-                      onChange={setSelectedMeetingMembers}
+                      onChange={handleMeetingMembersChange}
                       className="text-black"
+                      placeholder="Select meeting members..."
                       styles={{
                         control: (base, state) => ({
                           ...base,
@@ -445,7 +701,7 @@ const Meetings = () => {
                         }),
                       }}
                     />
-                    <small></small>
+                    <small className="text-gray-500">Meeting lead is automatically included and cannot be removed from this list</small>
                   </Grid2>
                 </Grid2>
 
@@ -593,15 +849,70 @@ const Meetings = () => {
 
                 <Grid2 container spacing={2}>
                   <Grid2 size={12} className="inputData">
-                    <label htmlFor="MeetingMembers">
+                    <label htmlFor="EditAddTeams">
+                      Add Team <span className="text-gray-500">(Optional)</span>
+                    </label>
+                    <Select
+                      isMulti
+                      options={teamOptions}
+                      value={selectedTeams}
+                      onChange={handleTeamSelection}
+                      className="text-black"
+                      placeholder="Select teams to add all members..."
+                      styles={{
+                        control: (base, state) => ({
+                          ...base,
+                          borderRadius: "5px",
+                          borderColor: state.isFocused
+                            ? "#282C6C"
+                            : "rgb(145, 144, 144)",
+                          borderWidth: "2px",
+                          boxShadow: "none",
+                          padding: "0px 8px",
+                          "&:hover": { borderColor: "#282C6C" },
+                        }),
+
+                        menu: (base) => ({
+                          ...base,
+                          backgroundColor: "#fff",
+                          borderRadius: "5px",
+                        }),
+                        option: (base, state) => ({
+                          ...base,
+                          backgroundColor: state.isSelected
+                            ? "#282C6C"
+                            : state.isFocused
+                              ? "#0073E6"
+                              : "white",
+                          color: state.isSelected
+                            ? "white"
+                            : state.isFocused
+                              ? "white"
+                              : "black",
+                          padding: "5px 16px",
+                          cursor: "pointer",
+                          "&:active": {
+                            backgroundColor: "#2563EB",
+                          },
+                        }),
+                      }}
+                    />
+                    <small className="text-gray-500">Select teams to automatically add all team members to the meeting</small>
+                  </Grid2>
+                </Grid2>
+
+                <Grid2 container spacing={2}>
+                  <Grid2 size={12} className="inputData">
+                    <label htmlFor="EditMeetingMembers">
                       Meeting members <span className="text-red-600">*</span>
                     </label>
                     <Select
                       isMulti
-                      options={selectMultiOptions}
+                      options={getFilteredMemberOptions(editForm.lead)}
                       value={selectedMeetingMembers}
-                      onChange={setSelectedMeetingMembers}
+                      onChange={handleMeetingMembersChange}
                       className="text-black"
+                      placeholder="Select meeting members..."
                       styles={{
                         control: (base, state) => ({
                           ...base,
@@ -640,7 +951,7 @@ const Meetings = () => {
                         }),
                       }}
                     />
-                    <small></small>
+                    <small className="text-gray-500">Meeting lead is automatically included and cannot be removed from this list</small>
                   </Grid2>
                 </Grid2>
 

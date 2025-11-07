@@ -38,12 +38,20 @@ This module uses a multi-strategy approach with comprehensive edge case handling
 """
 
 import re
-import spacy
 import pdfplumber
 from docx import Document
 import docx2txt
 from typing import Dict, Optional, Tuple
 import logging
+
+# Import spacy optionally
+try:
+    import spacy
+    SPACY_AVAILABLE = True
+except ImportError:
+    SPACY_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("spacy not installed. Some name extraction features will be disabled.")
 
 # Import PAN validator
 try:
@@ -58,11 +66,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load spaCy model (you'll need to download it first: python -m spacy download en_core_web_sm)
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    logger.warning("spaCy model not found. Install with: python -m spacy download en_core_web_sm")
-    nlp = None
+nlp = None
+if SPACY_AVAILABLE:
+    try:
+        nlp = spacy.load("en_core_web_sm")
+    except OSError:
+        logger.warning("spaCy model not found. Install with: python -m spacy download en_core_web_sm")
+        nlp = None
+    except Exception as e:
+        logger.warning(f"Could not load spaCy model: {e}")
+        nlp = None
 
 
 def extract_text(file_path: str) -> str:

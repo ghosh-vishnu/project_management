@@ -29,6 +29,26 @@ import { getToken } from "../../Token";
 import ErrorAlert from "../../components/Alert/ErrorAlert";
 import SuccessAlert from "../../components/Alert/SuccessAlert";
 
+// SelectOption component for dropdown
+const SelectOption = React.forwardRef(
+  ({ onChange, onBlur, name, label, options = [], selectOption, defaultValue, valueKey = 'id' }, ref) => (
+    <>
+      <label>
+        {label} <span className="text-red-600">*</span>
+      </label>
+      <select name={name} ref={ref} onChange={onChange} onBlur={onBlur} defaultValue={defaultValue}>
+        <option value="">Select {selectOption}</option>
+        {options &&
+          options.map((option, index) => (
+            <option key={index} value={option[valueKey] || option.name || option.id}>
+              {option.name}
+            </option>
+          ))}
+      </select>
+    </>
+  )
+);
+
 const AllProposals = () => {
   // Backend data
   const [proposalsData, setProposalsData] = useState([]);
@@ -81,6 +101,34 @@ const AllProposals = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+
+  // Leads data for Client Name dropdown (only status = "Won")
+  const [wonLeadsData, setWonLeadsData] = useState([]);
+
+  // Fetch leads with status "Won"
+  const getWonLeadsData = async () => {
+    try {
+      const accessToken = getToken("accessToken");
+      if (!accessToken) return;
+      // Fetch all leads and filter for "Won" status
+      const response = await axios.get(`${BASE_API_URL}/peoples/leads/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { page_size: 1000 }, // Get all leads
+      });
+      if (response && response.status === 200) {
+        const allLeads = Array.isArray(response.data?.results) ? response.data.results : [];
+        // Filter only leads with status "Won"
+        const wonLeads = allLeads.filter(lead => lead.status && lead.status.toLowerCase() === "won");
+        setWonLeadsData(wonLeads);
+      }
+    } catch (err) {
+      setWonLeadsData([]);
+    }
+  };
+
+  useEffect(() => {
+    getWonLeadsData();
+  }, []);
 
   // Create submit using plain form handler (prevents page refresh)
   const handleCreateSubmit = async (e) => {
@@ -314,7 +362,7 @@ const AllProposals = () => {
                   </label>
                   <input
                     required
-                    placeholder="Contract Name"
+                    placeholder="Client Name"
                     type="text"
                     name="contractName"
                     id="contractName"
@@ -322,14 +370,13 @@ const AllProposals = () => {
                   <small></small>
                 </Grid2>
                 <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
-                  <label htmlFor="contractClientName">
-                    Client Name <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="contract Email"
+                  <SelectOption
+                    label={"Client Name"}
+                    options={wonLeadsData}
+                    selectOption={"Client Name"}
                     name="contractClientName"
                     id="contractClientName"
+                    valueKey="email"
                   />
                   <small></small>
                 </Grid2>
@@ -470,7 +517,7 @@ const AllProposals = () => {
                   </label>
                   <input
                     required
-                    placeholder="Contract Name"
+                    placeholder="Client Name"
                     type="text"
                     name="contractName"
                     id="contractName"
@@ -479,15 +526,14 @@ const AllProposals = () => {
                   <small></small>
                 </Grid2>
                 <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
-                  <label htmlFor="contractClientName">
-                    Client Name <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="contract Email"
+                  <SelectOption
+                    label={"Client Name"}
+                    options={wonLeadsData}
+                    selectOption={"Client Name"}
                     name="contractClientName"
                     id="contractClientName"
                     defaultValue={editProposal?.client_lead || ''}
+                    valueKey="email"
                   />
                   <small></small>
                 </Grid2>

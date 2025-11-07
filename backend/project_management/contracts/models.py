@@ -13,6 +13,7 @@ class Contract(models.Model):
 
     name = models.CharField(max_length=255)
     lead_name = models.ForeignKey(Lead, on_delete=models.SET_NULL, null=True, blank=True, related_name='contracts')
+    proposal_id = models.IntegerField(null=True, blank=True, help_text="ID of the proposal this contract is based on")
     start_date = models.DateField()
     end_date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
