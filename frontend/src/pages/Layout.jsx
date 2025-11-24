@@ -4,9 +4,11 @@ import { Outlet } from 'react-router'
 
 const Layout = () => {
   return (
-    <div >
+    <div>
         <Sidebar>
-            <Outlet/>
+            <div style={{ width: '100%', minHeight: '100vh' }}>
+              <Outlet/>
+            </div>
         </Sidebar>
     </div>
   )

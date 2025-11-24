@@ -28,6 +28,8 @@ import Profile from './pages/Profile';
 import AddEmployee from './pages/Employee/AddEmployee';
 import EditEmployee from './pages/Employee/EditEmployee';
 import Layout from './pages/Layout';
+import SprintList from './pages/Sprints/SprintList';
+import SprintDetail from './pages/Sprints/SprintDetail';
 
 function App() {
   return (
@@ -53,6 +55,8 @@ function App() {
         <Route path='/AllProposals' element={<AllProposals/>} />
         <Route path='/tickets'  element = {<Tickets/>}/>
         <Route path='/todo'  element = {<ToDo/>}/>
+        <Route path='/sprints'  element = {<SprintList/>}/>
+        <Route path='/sprints/:id'  element = {<SprintDetail/>}/>
         </Route>
         <Route path='/dashboard' element = {<Dashboard/>}/>
         <Route path='/login' element = {<Login/>}/>

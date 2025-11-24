@@ -749,7 +749,7 @@ export default function Sidebar({ children }) {
                   <FilePresentIcon /> Documentation
                 </SideBarListItem>
 
-                <SideBarListItem>
+                <SideBarListItem to={'/sprints'} className={isActive('/sprints')}>
                   <TimelineIcon /> Sprint
                 </SideBarListItem>
 

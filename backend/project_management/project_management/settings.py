@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'setting',
     'finance',
     'invoices',
+    'sprint',
 ]
 
 MIDDLEWARE = [

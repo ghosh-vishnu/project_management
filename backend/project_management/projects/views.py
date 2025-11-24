@@ -111,7 +111,7 @@ def project_list(request):
             if page_size > 200:
                 page_size = 200
 
-            queryset = Project.objects.select_related('assigned_to', 'client').all()
+            queryset = Project.objects.select_related('assigned_to', 'client').order_by('-id').all()
             paginator = Paginator(queryset, page_size)
             try:
                 page_obj = paginator.page(page)
