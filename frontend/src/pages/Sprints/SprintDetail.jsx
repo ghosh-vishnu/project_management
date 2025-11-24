@@ -33,34 +33,26 @@ const SprintDetail = () => {
   const [tasks, setTasks] = useState([]);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Alert states
   const [showSuccess, setShowSuccess] = useState(false);
   const [showError, setShowError] = useState(false);
   const [message, setMessage] = useState("");
 
-  // Debug logging
-  useEffect(() => {
-    console.log("SprintDetail mounted with id:", id);
-    if (!id) {
-      console.error("No sprint ID found in URL params");
-      setShowError(true);
-      setMessage("Invalid sprint ID");
-      setLoading(false);
-    }
-  }, [id]);
+  // Removed excessive debug logging
 
   // Get status badge color
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case "active":
-        return "bg-green-500";
+        return "#10b981"; // green-500
       case "completed":
-        return "bg-blue-500";
+        return "#3b82f6"; // blue-500
       case "upcoming":
-        return "bg-yellow-500";
+        return "#eab308"; // yellow-500
       default:
-        return "bg-gray-500";
+        return "#6b7280"; // gray-500
     }
   };
 
@@ -69,14 +61,20 @@ const SprintDetail = () => {
   const fetchTimeoutRef = React.useRef(null);
   const isFetchingRef = React.useRef(false);
 
-  // Fetch sprint details - optimized with request cancellation and debouncing
+  // Fetch sprint details
   const fetchSprint = React.useCallback(async (silent = false) => {
-    // Prevent multiple simultaneous requests
+    if (!id) {
+      console.error("No sprint ID provided");
+      setError("No sprint ID provided");
+      setLoading(false);
+      return;
+    }
+
     if (isFetchingRef.current && !silent) {
       return;
     }
 
-    // Cancel previous request only if it's still pending and we're making a new one
+    // Cancel previous request
     if (abortControllerRef.current && abortControllerRef.current.signal && !abortControllerRef.current.signal.aborted) {
       try {
         abortControllerRef.current.abort();
@@ -93,6 +91,7 @@ const SprintDetail = () => {
     try {
       if (!silent) {
         setLoading(true);
+        setError(null);
       }
       
       const accessToken = getToken("accessToken");
@@ -106,70 +105,65 @@ const SprintDetail = () => {
           Authorization: `Bearer ${accessToken}`,
         },
         signal: abortController.signal,
-        timeout: 15000, // Increased timeout to 15 seconds
+        timeout: 15000,
       });
 
       // Only update state if request wasn't cancelled
       if (!abortController.signal.aborted) {
-        console.log("Sprint data fetched successfully:", response.data);
         setSprint(response.data);
         setTasks(response.data.tasks || []);
         setLoading(false);
+        setError(null);
       }
     } catch (error) {
-      // Ignore aborted requests - these are intentional
+      // Ignore aborted requests
       if (axios.isCancel(error) || error.name === 'AbortError' || error.code === 'ECONNABORTED' || abortController.signal.aborted) {
-        // Request was cancelled intentionally, ignore
         return;
       }
       
-      // Ignore broken pipe errors (client closed connection) - these are harmless
+      // Ignore broken pipe errors
       if (error.code === 'EPIPE' || error.message?.includes('Broken pipe') || error.message?.includes('ECONNRESET')) {
-        // Connection was closed by client, ignore
         return;
       }
 
-      // Only log and show errors for actual failures
+      // Handle errors silently (only show to user)
       if (error.response) {
-        // Server responded with an error
-        console.error("Error fetching sprint:", error.response.status, error.response.data);
         if (error.response.status >= 400 && !abortController.signal.aborted) {
+          setError(`Failed to fetch sprint: ${error.response.status}`);
           setShowError(true);
           setMessage("Failed to fetch sprint details.");
           setLoading(false);
         }
       } else if (error.request && !abortController.signal.aborted) {
-        // Request was made but no response received (network error)
-        console.error("Network error fetching sprint:", error.message);
+        setError("Network error. Please check your connection.");
         setShowError(true);
         setMessage("Network error. Please check your connection.");
         setLoading(false);
+      } else {
+        setError(error.message || "Unknown error occurred");
+        setLoading(false);
       }
     } finally {
-      // Only reset fetching flag if this request completed (wasn't replaced)
+      // Only reset fetching flag if this request completed
       if (abortControllerRef.current === abortController) {
         isFetchingRef.current = false;
-        if (!silent) {
+        if (!silent && loading) {
           setLoading(false);
         }
       }
     }
-  }, [id, navigate]);
+  }, [id, navigate]); // Removed loading from dependencies to prevent loops
 
   useEffect(() => {
-    console.log("useEffect triggered, id:", id);
     if (id) {
-      // Fetch sprint data immediately
-      console.log("Fetching sprint data for id:", id);
       fetchSprint();
     } else {
-      console.warn("No ID provided, cannot fetch sprint");
+      setError("No sprint ID provided");
       setLoading(false);
     }
 
-    // Cleanup: Cancel any pending requests on unmount or id change
+    // Cleanup
     return () => {
-      console.log("Cleaning up SprintDetail for id:", id);
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -178,18 +172,17 @@ const SprintDetail = () => {
       }
       isFetchingRef.current = false;
     };
-  }, [id, fetchSprint]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]); // Only depend on id, fetchSprint is stable
 
-  // Handle task update (after drag and drop or edit) - debounced to prevent rapid calls
+  // Handle task update
   const handleTaskUpdate = React.useCallback(() => {
-    // Clear any pending timeout
     if (fetchTimeoutRef.current) {
       clearTimeout(fetchTimeoutRef.current);
     }
 
-    // Debounce: Wait 300ms before fetching (prevents rapid successive calls)
     fetchTimeoutRef.current = setTimeout(() => {
-      fetchSprint(true); // Silent update
+      fetchSprint(true);
     }, 300);
   }, [fetchSprint]);
 
@@ -208,16 +201,18 @@ const SprintDetail = () => {
     return diffDays > 0 ? diffDays : 0;
   };
 
+  // Removed excessive render logging
+
   // Show loading state
-  if (loading && !sprint) {
+  if (loading && !sprint && !error) {
     return (
-      <div className="p-6" style={{ minHeight: '100vh' }}>
+      <div style={{ minHeight: '100vh', padding: '20px', backgroundColor: '#f5f5f5' }}>
         <ErrorAlert
           show={showError}
           message={message}
           onClose={() => setShowError(false)}
         />
-        <Breadcrumbs aria-label="breadcrumb" className="mb-4">
+        <Breadcrumbs aria-label="breadcrumb" style={{ marginBottom: '20px' }}>
           <Link underline="hover" color="inherit" to={"/"}>
             Dashboard
           </Link>
@@ -228,13 +223,13 @@ const SprintDetail = () => {
             Loading...
           </Typography>
         </Breadcrumbs>
-        <Box className="flex items-center justify-center min-h-[400px]">
-          <Box className="text-center">
+        <Box style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+          <Box style={{ textAlign: 'center' }}>
             <CircularProgress size={60} />
-            <Typography variant="h6" className="mt-4 text-gray-600">
+            <Typography variant="h6" style={{ marginTop: '16px', color: '#666' }}>
               Loading sprint details...
             </Typography>
-            <Typography variant="body2" className="mt-2 text-gray-500">
+            <Typography variant="body2" style={{ marginTop: '8px', color: '#999' }}>
               Sprint ID: {id || 'N/A'}
             </Typography>
           </Box>
@@ -246,19 +241,27 @@ const SprintDetail = () => {
   // If no ID, show error
   if (!id) {
     return (
-      <div className="p-6" style={{ minHeight: '100vh' }}>
+      <div style={{ minHeight: '100vh', padding: '20px' }}>
         <ErrorAlert
           show={true}
           message="Invalid sprint ID"
           onClose={() => navigate("/sprints")}
         />
-        <Paper className="p-8 text-center mt-4">
-          <Typography variant="h6" className="mb-2 text-gray-600">
+        <Paper style={{ padding: '32px', textAlign: 'center', marginTop: '16px' }}>
+          <Typography variant="h6" style={{ marginBottom: '8px', color: '#666' }}>
             Invalid Sprint ID
           </Typography>
           <button
             onClick={() => navigate("/sprints")}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mt-4"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#1976d2',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              marginTop: '16px'
+            }}
           >
             Back to Sprints
           </button>
@@ -267,9 +270,53 @@ const SprintDetail = () => {
     );
   }
 
-  console.log("Rendering SprintDetail, sprint:", sprint, "loading:", loading, "id:", id);
+  // If error, show error message
+  if (error && !sprint) {
+    return (
+      <div style={{ minHeight: '100vh', padding: '20px' }}>
+        <ErrorAlert
+          show={true}
+          message={error}
+          onClose={() => {
+            setError(null);
+            navigate("/sprints");
+          }}
+        />
+        <Breadcrumbs aria-label="breadcrumb" style={{ marginBottom: '20px' }}>
+          <Link underline="hover" color="inherit" to={"/"}>
+            Dashboard
+          </Link>
+          <Link underline="hover" color="inherit" to={"/sprints"}>
+            Sprints
+          </Link>
+          <Typography sx={{ color: "text.primary" }}>
+            Error
+          </Typography>
+        </Breadcrumbs>
+        <Paper style={{ padding: '32px', textAlign: 'center', marginTop: '16px' }}>
+          <Typography variant="h6" style={{ marginBottom: '8px', color: '#666' }}>
+            {error}
+          </Typography>
+          <button
+            onClick={() => navigate("/sprints")}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#1976d2',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              marginTop: '16px'
+            }}
+          >
+            Back to Sprints
+          </button>
+        </Paper>
+      </div>
+    );
+  }
 
-  // Always render something - even if there's an error
+  // Main render
   return (
     <div style={{ minHeight: '100vh', padding: '20px', backgroundColor: '#ffffff' }}>
       <ErrorAlert
@@ -296,72 +343,83 @@ const SprintDetail = () => {
         </Typography>
       </Breadcrumbs>
 
-      {/* Header - Render immediately, data will populate when loaded */}
-      <div className="mt-6">
-        <div className="flex items-center gap-4 mb-4">
+      {/* Header */}
+      <div style={{ marginTop: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
           <IconButton onClick={() => navigate("/sprints")}>
             <ArrowBackIcon />
           </IconButton>
-          <div className="flex-1">
-            <div className="flex items-center gap-4">
-              <h2 className="text-3xl font-bold">{sprint?.name || 'Sprint'}</h2>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <h2 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>
+                {sprint?.name || 'Sprint'}
+              </h2>
               {sprint?.status && (
                 <span
-                  className={`px-3 py-1 rounded-full text-white text-sm capitalize ${getStatusColor(
-                    sprint.status
-                  )}`}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    color: 'white',
+                    fontSize: '14px',
+                    textTransform: 'capitalize',
+                    backgroundColor: getStatusColor(sprint.status)
+                  }}
                 >
                   {sprint.status}
                 </span>
               )}
             </div>
-            <p className="text-gray-600 mt-2">{sprint?.project?.title || ''}</p>
+            <p style={{ color: '#666', marginTop: '8px', margin: 0 }}>
+              {sprint?.project?.title || ''}
+            </p>
           </div>
         </div>
 
-        {/* Sprint Info Cards - Show data when available */}
+        {/* Sprint Info Cards */}
         {sprint ? (
           <>
-            <Grid2 container spacing={2} className="mb-6">
+            <Grid2 container spacing={2} style={{ marginBottom: '24px' }}>
               <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
-                <Paper className="p-4">
-                  <div className="text-sm text-gray-600">Duration</div>
-                  <div className="text-lg font-semibold">
+                <Paper style={{ padding: '16px' }}>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Duration</div>
+                  <div style={{ fontSize: '18px', fontWeight: '600' }}>
                     {sprint.start_date} - {sprint.end_date}
                   </div>
                 </Paper>
               </Grid2>
               <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
-                <Paper className="p-4">
-                  <div className="text-sm text-gray-600">Remaining Days</div>
-                  <div className="text-lg font-semibold">{getRemainingDays()} days</div>
+                <Paper style={{ padding: '16px' }}>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Remaining Days</div>
+                  <div style={{ fontSize: '18px', fontWeight: '600' }}>
+                    {getRemainingDays()} days
+                  </div>
                 </Paper>
               </Grid2>
               <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
-                <Paper className="p-4">
-                  <div className="text-sm text-gray-600">Progress</div>
-                  <div className="flex items-center gap-2 mt-2">
+                <Paper style={{ padding: '16px' }}>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Progress</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
                     <LinearProgress
                       variant="determinate"
                       value={sprint.progress || 0}
-                      sx={{ flex: 1, height: 8, borderRadius: 4 }}
+                      style={{ flex: 1, height: 8, borderRadius: 4 }}
                     />
-                    <span className="text-lg font-semibold">
+                    <span style={{ fontSize: '18px', fontWeight: '600' }}>
                       {sprint.progress || 0}%
                     </span>
                   </div>
                 </Paper>
               </Grid2>
               <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
-                <Paper className="p-4">
-                  <div className="text-sm text-gray-600">Tasks</div>
-                  <div className="text-lg font-semibold">{tasks.length}</div>
+                <Paper style={{ padding: '16px' }}>
+                  <div style={{ fontSize: '14px', color: '#666' }}>Tasks</div>
+                  <div style={{ fontSize: '18px', fontWeight: '600' }}>{tasks.length}</div>
                 </Paper>
               </Grid2>
             </Grid2>
 
             {/* Tabs */}
-            <Paper className="mb-4">
+            <Paper style={{ marginBottom: '16px' }}>
               <Tabs
                 value={activeTab}
                 onChange={handleTabChange}
@@ -375,14 +433,24 @@ const SprintDetail = () => {
             </Paper>
 
             {/* Tab Content */}
-            <div className="mt-4">
+            <div style={{ marginTop: '16px' }}>
               {activeTab === 0 && (
                 <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-semibold">Tasks</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>Tasks</h3>
                     <button
                       onClick={() => setCreateTaskOpen(true)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700"
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#1976d2',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
                     >
                       <AddIcon /> Add Task
                     </button>
@@ -394,7 +462,7 @@ const SprintDetail = () => {
                       onTaskUpdate={handleTaskUpdate}
                     />
                   ) : (
-                    <Paper className="p-8 text-center text-gray-500">
+                    <Paper style={{ padding: '32px', textAlign: 'center', color: '#666' }}>
                       No tasks yet. Click "Add Task" to create one.
                     </Paper>
                   )}
@@ -403,7 +471,7 @@ const SprintDetail = () => {
 
               {activeTab === 1 && (
                 <div>
-                  <h3 className="text-xl font-semibold mb-4">Burndown Chart</h3>
+                  <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px' }}>Burndown Chart</h3>
                   <SprintBurndownChart sprintId={id} />
                 </div>
               )}
@@ -414,23 +482,30 @@ const SprintDetail = () => {
 
               {activeTab === 3 && (
                 <div>
-                  <h3 className="text-xl font-semibold mb-4">Retrospective</h3>
+                  <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px' }}>Retrospective</h3>
                   <SprintRetrospective sprintId={id} />
                 </div>
               )}
             </div>
           </>
         ) : (
-          <Paper className="p-8 text-center">
-            <Typography variant="h6" className="mb-2 text-gray-600">
+          <Paper style={{ padding: '32px', textAlign: 'center' }}>
+            <Typography variant="h6" style={{ marginBottom: '8px', color: '#666' }}>
               Sprint not found
             </Typography>
-            <Typography variant="body2" className="text-gray-500 mb-4">
+            <Typography variant="body2" style={{ color: '#999', marginBottom: '16px' }}>
               The sprint you're looking for doesn't exist or you don't have access to it.
             </Typography>
             <button
               onClick={() => navigate("/sprints")}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#1976d2',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
             >
               Back to Sprints
             </button>

@@ -75,7 +75,7 @@ const SprintComments = ({ sprintId }) => {
 
       setUsers(response.data || []);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      // Silently handle error - users filter is optional
     } finally {
       setLoadingUsers(false);
     }
@@ -134,7 +134,7 @@ const SprintComments = ({ sprintId }) => {
         setTotalCount(0);
       }
     } catch (error) {
-      console.error("Error fetching comments:", error);
+      // Only log critical errors
       setComments([]);
       setTotalCount(0);
       
@@ -160,24 +160,28 @@ const SprintComments = ({ sprintId }) => {
     }
   }, [sprintId]);
 
-  // Fetch comments on mount and when sprintId changes
+  // Fetch comments on mount only
   useEffect(() => {
     if (sprintId) {
       fetchComments("", null);
       
-      // Set up auto-refresh
+      // Set up auto-refresh (only when not searching/filtering)
       autoRefreshIntervalRef.current = setInterval(() => {
-        fetchComments(searchQuery, filterUser?.id || null);
-      }, 30000); // Refresh every 30 seconds
+        // Only auto-refresh if no active search/filter
+        if (!searchQuery && !filterUser) {
+          fetchComments("", null);
+        }
+      }, 60000); // Refresh every 60 seconds (reduced frequency)
 
       return () => {
         if (autoRefreshIntervalRef.current) {
           clearInterval(autoRefreshIntervalRef.current);
+          autoRefreshIntervalRef.current = null;
         }
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sprintId]);
+  }, [sprintId]); // Only depend on sprintId
 
   // Debounce search and filter changes
   useEffect(() => {
@@ -230,7 +234,6 @@ const SprintComments = ({ sprintId }) => {
       setShowSuccess(true);
       await fetchComments(); // Refresh comments
     } catch (error) {
-      console.error("Error submitting comment:", error);
       const errorMsg =
         error.response?.data?.error ||
         error.response?.data?.details ||
@@ -275,7 +278,6 @@ const SprintComments = ({ sprintId }) => {
       setShowSuccess(true);
       await fetchComments();
     } catch (error) {
-      console.error("Error updating comment:", error);
       const errorMsg =
         error.response?.data?.error ||
         error.response?.data?.details ||
@@ -318,7 +320,6 @@ const SprintComments = ({ sprintId }) => {
       setShowSuccess(true);
       await fetchComments();
     } catch (error) {
-      console.error("Error deleting comment:", error);
       const errorMsg =
         error.response?.data?.error ||
         error.response?.data?.details ||
@@ -672,7 +673,6 @@ const SprintComments = ({ sprintId }) => {
                       <Box className="prose prose-sm max-w-none">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
-                          className="text-gray-700"
                         >
                           {comment.content}
                         </ReactMarkdown>
