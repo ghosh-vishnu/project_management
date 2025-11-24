@@ -21,6 +21,7 @@ class DocumentsSerializer(serializers.ModelSerializer):
     aadhar_card = serializers.SerializerMethodField()
     pan_card = serializers.SerializerMethodField()
     higher_education_certificate = serializers.SerializerMethodField()
+    banner_image = serializers.SerializerMethodField()
     
     class Meta:
         model = Documents
@@ -47,6 +48,9 @@ class DocumentsSerializer(serializers.ModelSerializer):
     
     def get_higher_education_certificate(self, obj):
         return self.get_document_url(obj, 'higher_education_certificate')
+    
+    def get_banner_image(self, obj):
+        return self.get_document_url(obj, 'banner_image')
 
 
 class UserSerializer(serializers.ModelSerializer):

@@ -25,6 +25,7 @@ import ResetPassword from './pages/ResetPassword';
 import Logout from './pages/Logout';
 import ToDo from './pages/ToDo';
 import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 import AddEmployee from './pages/Employee/AddEmployee';
 import EditEmployee from './pages/Employee/EditEmployee';
 import Layout from './pages/Layout';
@@ -50,6 +51,7 @@ function App() {
         <Route path='/leads'  element = {<Leads/>}/>
         <Route path='/clients'  element = {<Clients/>}/>
         <Route path='/profile'  element = {<Profile/>}/>
+        <Route path='/settings'  element = {<Settings/>}/>
         <Route path='/expenses'  element = {<Expenses/>}/>
         <Route path='/setting'  element = {<Bank/>}/>
         <Route path='/AllProposals' element={<AllProposals/>} />

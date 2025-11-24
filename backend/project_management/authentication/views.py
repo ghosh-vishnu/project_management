@@ -203,12 +203,12 @@ def profile_view(request):
                     'pincode': employee.permanent_address.pincode if employee.permanent_address else None,
                 } if employee.permanent_address else None,
                 'documents': {
-                    'photo': employee.documents.photo.url if employee.documents and employee.documents.photo else None,
-                    'resume': employee.documents.resume.url if employee.documents and employee.documents.resume else None,
-                    'aadhar_card': employee.documents.aadhar_card.url if employee.documents and employee.documents.aadhar_card else None,
-                    'pan_card': employee.documents.pan_card.url if employee.documents and employee.documents.pan_card else None,
-                    'higher_education_certificate': employee.documents.higher_education_certificate.url if employee.documents and employee.documents.higher_education_certificate else None,
-                    'banner_image': employee.documents.banner_image.url if employee.documents and employee.documents.banner_image else None,
+                    'photo': request.build_absolute_uri(employee.documents.photo.url) if employee.documents and employee.documents.photo else None,
+                    'resume': request.build_absolute_uri(employee.documents.resume.url) if employee.documents and employee.documents.resume else None,
+                    'aadhar_card': request.build_absolute_uri(employee.documents.aadhar_card.url) if employee.documents and employee.documents.aadhar_card else None,
+                    'pan_card': request.build_absolute_uri(employee.documents.pan_card.url) if employee.documents and employee.documents.pan_card else None,
+                    'higher_education_certificate': request.build_absolute_uri(employee.documents.higher_education_certificate.url) if employee.documents and employee.documents.higher_education_certificate else None,
+                    'banner_image': request.build_absolute_uri(employee.documents.banner_image.url) if employee.documents and employee.documents.banner_image else None,
                 } if employee.documents else None,
             })
             
@@ -246,3 +246,47 @@ def user_profile_view(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password_view(request):
+    """Change user password endpoint"""
+    try:
+        user = request.user
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        
+        if not current_password or not new_password:
+            return Response(
+                {'error': 'Current password and new password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify current password
+        if not user.check_password(current_password):
+            return Response(
+                {'error': 'Current password is incorrect'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate new password length
+        if len(new_password) < 8:
+            return Response(
+                {'error': 'New password must be at least 8 characters long'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Set new password
+        user.set_password(new_password)
+        user.save()
+        
+        return Response(
+            {'message': 'Password changed successfully'},
+            status=status.HTTP_200_OK
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to change password: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

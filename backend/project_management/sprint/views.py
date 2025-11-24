@@ -15,6 +15,7 @@ from .serializers import (
     SprintCommentSerializer,
     SprintRetrospectiveSerializer
 )
+from .ai_services import SprintAIService
 
 
 class SprintViewSet(viewsets.ModelViewSet):
@@ -586,3 +587,141 @@ def sprint_retrospective(request, sprint_id):
                 serializer.save(sprint=sprint)
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ai_suggest_priority(request):
+    """AI endpoint to suggest task priority based on title and description"""
+    try:
+        title = request.data.get('title', '')
+        description = request.data.get('description', '')
+        
+        if not title:
+            return Response(
+                {'error': 'Title is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        suggested_priority = SprintAIService.suggest_priority(title, description)
+        
+        return Response({
+            'suggested_priority': suggested_priority,
+            'confidence': 'high' if title else 'medium'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to suggest priority: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ai_generate_description(request):
+    """AI endpoint to generate task description from title"""
+    try:
+        title = request.data.get('title', '')
+        sprint_id = request.data.get('sprint_id')
+        
+        if not title:
+            return Response(
+                {'error': 'Title is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        sprint_context = None
+        if sprint_id:
+            try:
+                sprint = Sprint.objects.get(id=sprint_id)
+                sprint_context = {
+                    'name': sprint.name,
+                    'description': sprint.description
+                }
+            except Sprint.DoesNotExist:
+                pass
+        
+        description = SprintAIService.generate_task_description(title, sprint_context)
+        
+        return Response({
+            'description': description
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to generate description: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ai_sprint_summary(request, sprint_id):
+    """AI endpoint to generate sprint summary"""
+    try:
+        sprint = Sprint.objects.get(id=sprint_id)
+        tasks = SprintTask.objects.filter(sprint=sprint)
+        comments = SprintComment.objects.filter(sprint=sprint).order_by('-created_at')[:50]
+        
+        sprint_data = SprintDetailSerializer(sprint).data
+        tasks_data = SprintTaskSerializer(tasks, many=True).data
+        comments_data = SprintCommentSerializer(comments, many=True).data
+        
+        summary = SprintAIService.generate_sprint_summary(
+            sprint_data,
+            tasks_data,
+            comments_data
+        )
+        
+        return Response({
+            'summary': summary
+        }, status=status.HTTP_200_OK)
+    except Sprint.DoesNotExist:
+        return Response(
+            {'error': 'Sprint not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to generate summary: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ai_retrospective_insights(request, sprint_id):
+    """AI endpoint to generate retrospective insights"""
+    try:
+        sprint = Sprint.objects.get(id=sprint_id)
+        tasks = SprintTask.objects.filter(sprint=sprint)
+        
+        try:
+            retrospective = SprintRetrospective.objects.get(sprint=sprint)
+            retrospective_data = SprintRetrospectiveSerializer(retrospective).data
+        except SprintRetrospective.DoesNotExist:
+            retrospective_data = {
+                'notes': ''
+            }
+        
+        sprint_data = SprintDetailSerializer(sprint).data
+        tasks_data = SprintTaskSerializer(tasks, many=True).data
+        
+        insights = SprintAIService.generate_retrospective_insights(
+            retrospective_data,
+            tasks_data,
+            sprint_data
+        )
+        
+        return Response({
+            'insights': insights
+        }, status=status.HTTP_200_OK)
+    except Sprint.DoesNotExist:
+        return Response(
+            {'error': 'Sprint not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to generate insights: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

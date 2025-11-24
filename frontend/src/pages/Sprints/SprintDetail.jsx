@@ -11,9 +11,30 @@ import {
   Grid2,
   IconButton,
   CircularProgress,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Tooltip,
+  Chip,
+  Divider,
+  Card,
+  CardContent,
+  Alert,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import WarningIcon from "@mui/icons-material/Warning";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import CommentIcon from "@mui/icons-material/Comment";
+import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import axios from "axios";
 import BASE_API_URL from "../../data";
 import { getToken } from "../../Token";
@@ -34,6 +55,9 @@ const SprintDetail = () => {
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
+  const [aiSummary, setAiSummary] = useState("");
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
 
   // Alert states
   const [showSuccess, setShowSuccess] = useState(false);
@@ -199,6 +223,36 @@ const SprintDetail = () => {
     const diffTime = endDate - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 0 ? diffDays : 0;
+  };
+
+  // AI: Generate Sprint Summary
+  const handleAIGenerateSummary = async () => {
+    if (!id) return;
+
+    try {
+      setAiSummaryLoading(true);
+      const accessToken = getToken("accessToken");
+      if (!accessToken) return;
+
+      const response = await axios.get(
+        `${BASE_API_URL}/sprints/${id}/ai/summary/`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (response.data.summary) {
+        setAiSummary(response.data.summary);
+        setAiSummaryOpen(true);
+      }
+    } catch (error) {
+      console.error("Error generating summary:", error);
+      alert("Failed to generate summary. Please try again.");
+    } finally {
+      setAiSummaryLoading(false);
+    }
   };
 
   // Removed excessive render logging
@@ -420,16 +474,29 @@ const SprintDetail = () => {
 
             {/* Tabs */}
             <Paper style={{ marginBottom: '16px' }}>
-              <Tabs
-                value={activeTab}
-                onChange={handleTabChange}
-                aria-label="sprint tabs"
-              >
-                <Tab label="Tasks" />
-                <Tab label="Progress" />
-                <Tab label="Comments" />
-                <Tab label="Retrospective" />
-              </Tabs>
+              <Box style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px' }}>
+                <Tabs
+                  value={activeTab}
+                  onChange={handleTabChange}
+                  aria-label="sprint tabs"
+                >
+                  <Tab label="Tasks" />
+                  <Tab label="Progress" />
+                  <Tab label="Comments" />
+                  <Tab label="Retrospective" />
+                </Tabs>
+                <Tooltip title="AI: Generate Sprint Summary">
+                  <Button
+                    variant="outlined"
+                    startIcon={aiSummaryLoading ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                    onClick={handleAIGenerateSummary}
+                    disabled={aiSummaryLoading}
+                    size="small"
+                  >
+                    AI Summary
+                  </Button>
+                </Tooltip>
+              </Box>
             </Paper>
 
             {/* Tab Content */}
@@ -522,6 +589,217 @@ const SprintDetail = () => {
           onTaskCreated={handleTaskUpdate}
         />
       )}
+
+      {/* AI Summary Dialog */}
+      <Dialog
+        open={aiSummaryOpen}
+        onClose={() => setAiSummaryOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            maxHeight: '90vh',
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            pb: 2,
+          }}
+        >
+          <AutoAwesomeIcon sx={{ fontSize: 28 }} />
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            AI Sprint Summary
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3, maxHeight: 'calc(90vh - 160px)', overflowY: 'auto', bgcolor: '#fafbfc' }}>
+          {aiSummaryLoading ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 8 }}>
+              <CircularProgress size={48} sx={{ mb: 2, color: '#667eea' }} />
+              <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
+                Generating AI summary...
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, opacity: 0.7 }}>
+                Please wait while we analyze your sprint data
+              </Typography>
+            </Box>
+          ) : aiSummary ? (
+            <Box sx={{ 
+              '& .summary-section': {
+                mb: 3,
+              },
+              '& h1': {
+                fontSize: '1.875rem',
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                mb: 3,
+                pb: 2,
+                borderBottom: '3px solid #e2e8f0',
+              },
+              '& h2': {
+                fontSize: '1.375rem',
+                fontWeight: 600,
+                color: '#2d3748',
+                mt: 4,
+                mb: 2,
+                pb: 1,
+                borderBottom: '2px solid #e2e8f0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+              },
+              '& h3': {
+                fontSize: '1.125rem',
+                fontWeight: 600,
+                color: '#4a5568',
+                mb: 1.5,
+                mt: 2,
+              },
+              '& ul, & ol': {
+                pl: 3,
+                mb: 2,
+                '& li': {
+                  mb: 1,
+                  color: '#4a5568',
+                  lineHeight: 1.7,
+                  '&::marker': {
+                    color: '#667eea',
+                  },
+                },
+              },
+              '& p': {
+                mb: 2,
+                color: '#4a5568',
+                lineHeight: 1.7,
+              },
+              '& strong': {
+                color: '#2d3748',
+                fontWeight: 700,
+              },
+              '& em': {
+                fontStyle: 'italic',
+                color: '#718096',
+              },
+              '& code': {
+                backgroundColor: '#edf2f7',
+                padding: '3px 8px',
+                borderRadius: '4px',
+                fontSize: '0.875rem',
+                fontFamily: '"Fira Code", "Courier New", monospace',
+                color: '#e53e3e',
+                fontWeight: 500,
+              },
+              '& pre': {
+                backgroundColor: '#1a202c',
+                color: '#f7fafc',
+                padding: '16px',
+                borderRadius: '8px',
+                overflowX: 'auto',
+                mb: 2,
+                '& code': {
+                  backgroundColor: 'transparent',
+                  color: '#f7fafc',
+                  padding: 0,
+                },
+              },
+              '& blockquote': {
+                borderLeft: '4px solid #667eea',
+                pl: 2,
+                py: 1.5,
+                my: 2,
+                backgroundColor: '#edf2f7',
+                borderRadius: '4px',
+                fontStyle: 'italic',
+                color: '#4a5568',
+              },
+              '& hr': {
+                border: 'none',
+                borderTop: '2px solid #e2e8f0',
+                my: 3,
+              },
+              '& a': {
+                color: '#667eea',
+                textDecoration: 'none',
+                '&:hover': {
+                  textDecoration: 'underline',
+                },
+              },
+              '& table': {
+                width: '100%',
+                borderCollapse: 'collapse',
+                mb: 2,
+                '& th, & td': {
+                  border: '1px solid #e2e8f0',
+                  padding: '12px',
+                  textAlign: 'left',
+                },
+                '& th': {
+                  backgroundColor: '#f7fafc',
+                  fontWeight: 600,
+                  color: '#2d3748',
+                },
+                '& tr:nth-of-type(even)': {
+                  backgroundColor: '#fafbfc',
+                },
+              },
+            }}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {aiSummary}
+              </ReactMarkdown>
+            </Box>
+          ) : (
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <AutoAwesomeIcon sx={{ fontSize: 48, color: '#cbd5e0', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                No summary available
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Click "AI Summary" button to generate a summary
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <Divider />
+        <DialogActions sx={{ px: 3, py: 2, bgcolor: '#f7fafc' }}>
+          <Button
+            onClick={() => {
+              if (navigator.clipboard && aiSummary) {
+                navigator.clipboard.writeText(aiSummary).then(() => {
+                  setShowSuccess(true);
+                  setMessage("Summary copied to clipboard!");
+                  setTimeout(() => setShowSuccess(false), 3000);
+                });
+              }
+            }}
+            startIcon={<ContentCopyIcon />}
+            variant="outlined"
+            disabled={!aiSummary || aiSummaryLoading}
+          >
+            Copy
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button
+            onClick={() => setAiSummaryOpen(false)}
+            variant="contained"
+            sx={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #5568d3 0%, #6a3d8f 100%)',
+              },
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };

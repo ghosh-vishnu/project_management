@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Modal, Box, TextField, Button, Grid2, Select, MenuItem, FormControl, InputLabel } from "@mui/material";
+import { Modal, Box, TextField, Button, Grid2, Select, MenuItem, FormControl, InputLabel, IconButton, Tooltip, CircularProgress } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import axios from "axios";
 import BASE_API_URL from "../../data";
 import { getToken } from "../../Token";
@@ -10,14 +11,21 @@ import dayjs from "dayjs";
 const CreateTaskModal = ({ open, onClose, sprintId, onTaskCreated }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiPriorityLoading, setAiPriorityLoading] = useState(false);
 
   const {
     register,
     handleSubmit,
     reset,
     control,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm();
+  
+  const title = watch("title");
+  const description = watch("description");
 
   useEffect(() => {
     if (open) {
@@ -41,6 +49,80 @@ const CreateTaskModal = ({ open, onClose, sprintId, onTaskCreated }) => {
       setUsers(response.data || []);
     } catch (error) {
       console.error("Error fetching users:", error);
+    }
+  };
+
+  // AI: Generate task description
+  const handleAIGenerateDescription = async () => {
+    if (!title) {
+      alert("Please enter a task title first");
+      return;
+    }
+
+    try {
+      setAiGenerating(true);
+      const accessToken = getToken("accessToken");
+      if (!accessToken) return;
+
+      const response = await axios.post(
+        `${BASE_API_URL}/ai/generate-description/`,
+        {
+          title: title,
+          sprint_id: sprintId,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data.description) {
+        setValue("description", response.data.description);
+      }
+    } catch (error) {
+      console.error("Error generating description:", error);
+      alert("Failed to generate description. Please try again.");
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  // AI: Suggest priority
+  const handleAISuggestPriority = async () => {
+    if (!title) {
+      alert("Please enter a task title first");
+      return;
+    }
+
+    try {
+      setAiPriorityLoading(true);
+      const accessToken = getToken("accessToken");
+      if (!accessToken) return;
+
+      const response = await axios.post(
+        `${BASE_API_URL}/ai/suggest-priority/`,
+        {
+          title: title,
+          description: description || "",
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data.suggested_priority) {
+        setValue("priority", response.data.suggested_priority);
+      }
+    } catch (error) {
+      console.error("Error suggesting priority:", error);
+      alert("Failed to suggest priority. Please try again.");
+    } finally {
+      setAiPriorityLoading(false);
     }
   };
 
@@ -123,6 +205,24 @@ const CreateTaskModal = ({ open, onClose, sprintId, onTaskCreated }) => {
                 {...register("title", { required: "Task title is required" })}
                 error={!!errors.title}
                 helperText={errors.title?.message}
+                InputProps={{
+                  endAdornment: title && (
+                    <Tooltip title="AI: Suggest Priority">
+                      <IconButton
+                        onClick={handleAISuggestPriority}
+                        disabled={aiPriorityLoading}
+                        size="small"
+                        sx={{ mr: 1 }}
+                      >
+                        {aiPriorityLoading ? (
+                          <CircularProgress size={20} />
+                        ) : (
+                          <AutoAwesomeIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                  ),
+                }}
               />
             </Grid2>
 
@@ -176,13 +276,33 @@ const CreateTaskModal = ({ open, onClose, sprintId, onTaskCreated }) => {
             </Grid2>
 
             <Grid2 size={12}>
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label="Description"
-                {...register("description")}
-              />
+              <Box sx={{ position: 'relative' }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  label="Description"
+                  {...register("description")}
+                  InputProps={{
+                    endAdornment: title && (
+                      <Tooltip title="AI: Generate Description">
+                        <IconButton
+                          onClick={handleAIGenerateDescription}
+                          disabled={aiGenerating}
+                          color="primary"
+                          sx={{ position: 'absolute', right: 8, top: 8 }}
+                        >
+                          {aiGenerating ? (
+                            <CircularProgress size={20} />
+                          ) : (
+                            <AutoAwesomeIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                    ),
+                  }}
+                />
+              </Box>
             </Grid2>
           </Grid2>
 
