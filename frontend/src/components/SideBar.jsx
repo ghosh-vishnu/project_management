@@ -21,6 +21,8 @@ import CampaignIcon from "@mui/icons-material/Campaign";
 import CircleNotificationsIcon from "@mui/icons-material/CircleNotifications";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import SearchIcon from "@mui/icons-material/Search";
+import ClearIcon from "@mui/icons-material/Clear";
+import SearchBar from "./SearchBar";
 
 import { Link, useLocation, useNavigate } from "react-router";
 import LoadingBar from "react-top-loading-bar";
@@ -33,6 +35,10 @@ import {
   Menu,
   MenuItem,
   Tooltip,
+  TextField,
+  InputAdornment,
+  Fade,
+  Collapse,
 } from "@mui/material";
 import { Logout } from "@mui/icons-material";
 import LockResetIcon from "@mui/icons-material/LockReset";
@@ -59,6 +65,31 @@ export default function Sidebar({ children }) {
   const [isTasksOpen, setIsTasksOpen] = useState(false);
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
   const [isSettingOpen, setIsSettingOpen] = useState(false);
+  
+  // Sidebar search/filter
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
+  const [isSidebarSearchFocused, setIsSidebarSearchFocused] = useState(false);
+
+  // To activate the sidebar list item - MUST be declared before useEffect
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Auto-expand menus based on current route
+  useEffect(() => {
+    const path = location.pathname;
+    if (path.includes('/contracts') || path.includes('/AllContracts')) {
+      setIsContractsOpen(true);
+    }
+    if (path.includes('/AllProposals') || path.includes('/proposals')) {
+      setIsProposalsOpen(true);
+    }
+    if (path.includes('/tasks') || path.includes('/todo') || path.includes('/ToDo')) {
+      setIsTasksOpen(true);
+    }
+    if (path.includes('/income') || path.includes('/expenses')) {
+      setIsFinanceOpen(true);
+    }
+  }, [location.pathname]);
 
   // Success message state for logout
   const [showSuccess, setShowSuccess] = useState(false);
@@ -71,9 +102,6 @@ export default function Sidebar({ children }) {
       navigate('/login')
     }
   }
-
-  // To activate the sidebar list item
-  const location = useLocation();
   const isActive = (path) =>
     location.pathname == path ? " sideBarItemActive" : " ";
 
@@ -178,8 +206,6 @@ export default function Sidebar({ children }) {
     return cleanup;
   }, []);
 
-
-  const navigate = useNavigate()
   // Logout function
   const handleLogout = () => {
 
@@ -208,7 +234,7 @@ export default function Sidebar({ children }) {
 
       <LoadingBar color="#282C6C" height={3} ref={loadingBar} />
       {/* Header - Advanced Futuristic Design */}
-      <div className="flex justify-between items-center px-6 lg:px-8 py-3 h-[5rem] bg-gradient-to-r from-slate-900 via-indigo-900 to-blue-900 w-full border-b border-cyan-500/30 shadow-xl shadow-cyan-500/10 relative overflow-hidden">
+      <div className="flex justify-between items-center px-6 lg:px-8 py-3 h-[5rem] bg-gradient-to-r from-slate-900 via-indigo-900 to-blue-900 w-full border-b border-cyan-500/30 shadow-xl shadow-cyan-500/10 relative" style={{ overflow: 'visible' }}>
         
         {/* Animated background gradient */}
         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-cyan-500/5 to-purple-500/5 animate-pulse"></div>
@@ -262,24 +288,12 @@ export default function Sidebar({ children }) {
         </div>
         
         {/* Right Section - Search, Notifications & User */}
-        <div className="relative flex items-center gap-3 z-10">
+        <div className="relative flex items-center gap-3 z-50" style={{ zIndex: 50 }}>
         {isAccessToken ? (
           <>
-            {/* Search Bar */}
-            <div className="hidden lg:flex items-center relative">
-              <input
-                type="text"
-                placeholder="Quick search..."
-                className="bg-white/10 border border-cyan-500/30 rounded-lg px-4 py-2 pr-10 text-white placeholder-white/50 focus:outline-none focus:border-cyan-500/50 focus:bg-white/15 transition-all duration-200 text-sm w-64"
-              />
-              <SearchIcon 
-                sx={{ 
-                  position: 'absolute', 
-                  right: 12, 
-                  color: 'rgba(255,255,255,0.5)',
-                  fontSize: 20 
-                }} 
-              />
+            {/* Smart Search Bar with Auto-suggestions */}
+            <div className="hidden lg:flex items-center relative" style={{ zIndex: 9999, position: 'relative' }}>
+              <SearchBar />
             </div>
             
             {/* Notifications Bell Icon */}
@@ -611,55 +625,93 @@ export default function Sidebar({ children }) {
             className={`absolute left-0 lg:static z-10 h-full   transition-transform transform  ${isOpen ? "translate-x-0 w-full lg:w-[16rem]" : "-translate-x-[20rem]"} w-0`}
           >
             <div
-              className={` overflow-y-scroll no-scrollbar h-full  w-full sm:w-[16rem] bg-gradient-to-b from-slate-900 via-indigo-900 to-blue-900 text-white p-5 translate-[visibility] border-r border-cyan-500/20`}
+              className={` h-full  w-full sm:w-[16rem] bg-gradient-to-b from-slate-900 via-indigo-900 to-blue-900 text-white p-5 translate-[visibility] border-r border-cyan-500/20 flex flex-col`}
             >
-              {/* <h2 className="text-2xl font-bold mb-5">Sidebar</h2> */}
-              <ul className="space-y-4">
-                <SideBarListItem to={"/"} className={isActive("/")}>
-                  <DashboardIcon /> Dashboard
-                </SideBarListItem>
+              {/* Menu Items - Scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                <ul className="space-y-2">
+                {(!sidebarSearchQuery || 'dashboard'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={"/"} className={isActive("/")}>
+                      <DashboardIcon /> Dashboard
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
-                <SideBarListItem to={'/employee'} className={isActive('/employee')}>
-                  <BadgeIcon /> Employees
-                </SideBarListItem>
+                {(!sidebarSearchQuery || 'employees'.includes(sidebarSearchQuery) || 'employee'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={'/employee'} className={isActive('/employee')}>
+                      <BadgeIcon /> Employees
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
+
+                {(!sidebarSearchQuery || 'teams'.includes(sidebarSearchQuery) || 'team'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={'/teams'} className={isActive('/teams')}>
+                      <GroupsIcon /> Teams
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
+
+                {(!sidebarSearchQuery || 'meeting'.includes(sidebarSearchQuery) || 'schedule'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={'/meetings'} className={isActive('/meetings')}>
+                      <VideocamIcon /> Meeting Schedule
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
+
+                {(!sidebarSearchQuery || 'roles'.includes(sidebarSearchQuery) || 'role'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem>
+                      <LockIcon /> Roles 
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
+
+                {(!sidebarSearchQuery || 'leads'.includes(sidebarSearchQuery) || 'lead'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={"/leads"} className={isActive("/leads")}>
+                      <PermContactCalendarIcon /> Leads
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
 
 
-                <SideBarListItem to={'/teams'} className={isActive('/teams')}>
-                  <GroupsIcon /> Teams
-                </SideBarListItem>
 
-                <SideBarListItem to={'/meetings'} className={isActive('/meetings')}>
-                  <VideocamIcon /> Meeting Schedule
-                </SideBarListItem>
-
-                <SideBarListItem >
-                  <LockIcon /> Roles 
-                </SideBarListItem>
-
-                <SideBarListItem to={"/leads"} className={isActive("/leads")}>
-                  <PermContactCalendarIcon /> Leads
-                </SideBarListItem>
-
-
-
-
+                {(!sidebarSearchQuery || 'proposals'.includes(sidebarSearchQuery) || 'all proposals'.includes(sidebarSearchQuery) || 'add template'.includes(sidebarSearchQuery)) && (
                 <div>
-                  <div onClick={() => setIsProposalsOpen(!isProposalsOpen)}>
+                  <div 
+                    onClick={() => setIsProposalsOpen(!isProposalsOpen)}
+                    className="cursor-pointer transition-all duration-200"
+                  >
                     <SideBarListItem>
                       <div className="flex justify-between items-center gap-2 w-full">
                         <div className="flex gap-x-4">
                           <AssignmentIcon /> Proposals
                         </div>
-                        <div>
+                        <div className={`transition-transform duration-300 ${isProposalsOpen ? 'rotate-180' : ''}`}>
                           <ExpandMoreIcon />
                         </div>
                       </div>
                     </SideBarListItem>
                   </div>
-                  <div
-                    className={`space-y-2 ps-2  ${isProposalsOpen ? " h-full visible mt-2" : "h-0 invisible"} `}
-                  >
+                  <Collapse in={isProposalsOpen} timeout={300}>
+                    <div className="space-y-2 ps-2 mt-2">
                     <div className="">
                       <SideBarListItem to={'/AllProposals'}>
                         All Proposals
@@ -670,25 +722,30 @@ export default function Sidebar({ children }) {
                         Add Template
                       </SideBarListItem>
                     </div>
-                  </div>
+                    </div>
+                  </Collapse>
                 </div>
+                )}
 
+                {(!sidebarSearchQuery || 'contracts'.includes(sidebarSearchQuery) || 'all contracts'.includes(sidebarSearchQuery)) && (
                 <div>
-                  <div onClick={() => setIsContractsOpen(!isContractsOpen)}>
+                  <div 
+                    onClick={() => setIsContractsOpen(!isContractsOpen)}
+                    className="cursor-pointer transition-all duration-200"
+                  >
                     <SideBarListItem>
                       <div className="flex justify-between items-center gap-2 w-full">
                         <div className="flex gap-x-4">
                           <DescriptionIcon /> Contracts
                         </div>
-                        <div>
+                        <div className={`transition-transform duration-300 ${isContractsOpen ? 'rotate-180' : ''}`}>
                           <ExpandMoreIcon />
                         </div>
                       </div>
                     </SideBarListItem>
                   </div>
-                  <div
-                    className={`space-y-2 ps-2  ${isContractsOpen ? " h-full visible mt-2" : "h-0 invisible"} `}
-                  >
+                  <Collapse in={isContractsOpen} timeout={300}>
+                    <div className="space-y-2 ps-2 mt-2">
                     <div className="">
                       <SideBarListItem to={'/contracts'} className={isActive('/contracts')}>
                         All Contracts
@@ -699,36 +756,53 @@ export default function Sidebar({ children }) {
                         Add Template
                       </SideBarListItem>
                     </div>
-                  </div>
+                    </div>
+                  </Collapse>
                 </div>
+                )}
 
-                <SideBarListItem to={'/clients'} className={isActive("/clients")}>
-                  <AssignmentIndIcon /> Clients
-                </SideBarListItem>
+                {(!sidebarSearchQuery || 'clients'.includes(sidebarSearchQuery) || 'client'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={'/clients'} className={isActive("/clients")}>
+                      <AssignmentIndIcon /> Clients
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
-                <SideBarListItem
-                  to={"/projects"}
-                  className={isActive("/projects")}
-                >
-                  <FolderIcon /> Projects
-                </SideBarListItem>
+                {(!sidebarSearchQuery || 'projects'.includes(sidebarSearchQuery) || 'project'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem
+                      to={"/projects"}
+                      className={isActive("/projects")}
+                    >
+                      <FolderIcon /> Projects
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
+                {(!sidebarSearchQuery || 'tasks'.includes(sidebarSearchQuery) || 'assign tasks'.includes(sidebarSearchQuery) || 'to do'.includes(sidebarSearchQuery) || 'todo'.includes(sidebarSearchQuery)) && (
                 <div>
-                  <div onClick={() => setIsTasksOpen(!isTasksOpen)}>
+                  <div 
+                    onClick={() => setIsTasksOpen(!isTasksOpen)}
+                    className="cursor-pointer transition-all duration-200"
+                  >
                     <SideBarListItem className={isActive('/tasks')}>
                       <div className="flex justify-between items-center gap-2 w-full">
                         <div className="flex gap-x-4">
                           <TaskIcon /> Tasks
                         </div>
-                        <div>
+                        <div className={`transition-transform duration-300 ${isTasksOpen ? 'rotate-180' : ''}`}>
                           <ExpandMoreIcon />
                         </div>
                       </div>
                     </SideBarListItem>
                   </div>
-                  <div
-                    className={`space-y-2 ps-2  ${isTasksOpen ? " h-full visible mt-2" : "h-0 invisible"} `}
-                  >
+                  <Collapse in={isTasksOpen} timeout={300}>
+                    <div className="space-y-2 ps-2 mt-2">
                     <div className="">
                       <SideBarListItem to={'/tasks'} >
                         Assign Tasks
@@ -739,52 +813,90 @@ export default function Sidebar({ children }) {
                         To Do
                       </SideBarListItem>
                     </div>
-                  </div>
+                    </div>
+                  </Collapse>
                 </div>
+                )}
 
+                {(!sidebarSearchQuery || 'documentation'.includes(sidebarSearchQuery) || 'documents'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem>
+                      <FilePresentIcon /> Documentation
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
+                {(!sidebarSearchQuery || 'sprint'.includes(sidebarSearchQuery) || 'sprints'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={'/sprints'} className={isActive('/sprints')}>
+                      <TimelineIcon /> Sprint
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
+                {(!sidebarSearchQuery || 'tickets'.includes(sidebarSearchQuery) || 'ticket'.includes(sidebarSearchQuery) || 'support'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={'/tickets'} className={isActive("/tickets")}>
+                      <SupportAgentIcon /> Tickets
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
-                <SideBarListItem>
-                  <FilePresentIcon /> Documentation
-                </SideBarListItem>
+                {(!sidebarSearchQuery || 'announcements'.includes(sidebarSearchQuery) || 'announcement'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem>
+                      <CampaignIcon /> Announcements
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
-                <SideBarListItem to={'/sprints'} className={isActive('/sprints')}>
-                  <TimelineIcon /> Sprint
-                </SideBarListItem>
+                {(!sidebarSearchQuery || 'invoices'.includes(sidebarSearchQuery) || 'invoice'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={'/invoices'} className={isActive("/invoices")} >
+                      <ReceiptIcon /> Invoices
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
-                <SideBarListItem to={'/tickets'} className={isActive("/tickets")}>
-                  <SupportAgentIcon /> Tickets
-                </SideBarListItem>
+                {(!sidebarSearchQuery || 'notifications'.includes(sidebarSearchQuery) || 'notification'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem>
+                      <CircleNotificationsIcon /> Notifications
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
-                <SideBarListItem>
-                  <CampaignIcon /> Announcements
-                </SideBarListItem>
-
-                <SideBarListItem to={'/invoices'} className={isActive("/invoices")} >
-                  <ReceiptIcon /> Invoices
-                </SideBarListItem>
-
-                <SideBarListItem>
-                  <CircleNotificationsIcon /> Notifications
-                </SideBarListItem>
-
+                {(!sidebarSearchQuery || 'finance'.includes(sidebarSearchQuery) || 'income'.includes(sidebarSearchQuery) || 'expenses'.includes(sidebarSearchQuery)) && (
                 <div>
-                  <div onClick={() => setIsFinanceOpen(!isFinanceOpen)}>
+                  <div 
+                    onClick={() => setIsFinanceOpen(!isFinanceOpen)}
+                    className="cursor-pointer transition-all duration-200"
+                  >
                     <SideBarListItem>
                       <div className="flex justify-between items-center gap-2 w-full">
                         <div className="flex gap-x-4">
                           <MonetizationOnIcon /> Finance
                         </div>
-                        <div>
+                        <div className={`transition-transform duration-300 ${isFinanceOpen ? 'rotate-180' : ''}`}>
                           <ExpandMoreIcon />
                         </div>
                       </div>
                     </SideBarListItem>
                   </div>
-                  <div
-                    className={`space-y-2 ps-2  ${isFinanceOpen ? " h-full visible mt-2" : "h-0 invisible"} `}
-                  >
+                  <Collapse in={isFinanceOpen} timeout={300}>
+                    <div className="space-y-2 ps-2 mt-2">
                     <div className="">
                       <SideBarListItem to={'/income'}>
                         Income
@@ -796,16 +908,75 @@ export default function Sidebar({ children }) {
                         Expenses
                       </SideBarListItem>
                     </div>
-                  </div>
+                    </div>
+                  </Collapse>
                 </div>
+                )}
 
-                
-
-                <SideBarListItem to={'/setting'} className={'/setting'}>
-                    <SettingsIcon /> Add Bank
-                </SideBarListItem>
+                {(!sidebarSearchQuery || 'bank'.includes(sidebarSearchQuery) || 'setting'.includes(sidebarSearchQuery) || 'settings'.includes(sidebarSearchQuery)) && (
+                <Fade in={true} timeout={300}>
+                  <div>
+                    <SideBarListItem to={'/setting'} className={'/setting'}>
+                      <SettingsIcon /> Add Bank
+                    </SideBarListItem>
+                  </div>
+                </Fade>
+                )}
 
               </ul>
+              </div>
+              
+              {/* Sidebar Search - Fixed at Bottom */}
+              <div className="mt-auto pt-4 sticky bottom-0 z-10 bg-gradient-to-t from-slate-900 via-indigo-900 to-blue-900 border-t border-cyan-500/20">
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Search menu..."
+                  value={sidebarSearchQuery}
+                  onChange={(e) => setSidebarSearchQuery(e.target.value.toLowerCase())}
+                  onFocus={() => setIsSidebarSearchFocused(true)}
+                  onBlur={() => setIsSidebarSearchFocused(false)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 18 }} />
+                      </InputAdornment>
+                    ),
+                    endAdornment: sidebarSearchQuery && (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          onClick={() => setSidebarSearchQuery('')}
+                          sx={{ color: 'rgba(255,255,255,0.5)' }}
+                        >
+                          <ClearIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      color: 'white',
+                      borderRadius: '8px',
+                      '& fieldset': {
+                        borderColor: 'rgba(6, 182, 212, 0.3)',
+                      },
+                      '&:hover fieldset': {
+                        borderColor: 'rgba(6, 182, 212, 0.5)',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: 'rgba(6, 182, 212, 0.7)',
+                        borderWidth: '1px',
+                      },
+                      '& input::placeholder': {
+                        color: 'rgba(255, 255, 255, 0.4)',
+                        opacity: 1,
+                      },
+                    },
+                  }}
+                />
+              </div>
             </div>
           </div>
 

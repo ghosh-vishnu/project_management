@@ -38,6 +38,8 @@ const Profile = () => {
   const [profileData, setProfileData] = useState(null);
   const [employeeData, setEmployeeData] = useState(null);
   const [recentTasks, setRecentTasks] = useState([]);
+  const [userProjects, setUserProjects] = useState([]);
+  const [loadingRecentWork, setLoadingRecentWork] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [bannerImage, setBannerImage] = useState(null);
   const [employeeId, setEmployeeId] = useState(null);
@@ -126,39 +128,7 @@ const Profile = () => {
         });
       }
 
-      setRecentTasks([
-        {
-          id: 1,
-          type: 'subtask',
-          title: 'Subtask 2.1',
-          project: 'My Scrum Project',
-          createdAt: 'today',
-        },
-        {
-          id: 2,
-          type: 'task',
-          status: 'completed',
-          title: 'Task 3',
-          project: 'My Scrum Project',
-          createdAt: 'today',
-        },
-        {
-          id: 3,
-          type: 'task',
-          status: 'bookmarked',
-          title: 'Task 2',
-          project: 'My Scrum Project',
-          createdAt: 'today',
-        },
-        {
-          id: 4,
-          type: 'task',
-          status: 'completed',
-          title: 'Task 1',
-          project: 'My Scrum Project',
-          createdAt: 'today',
-        },
-      ]);
+      // Fetch recent work will be done in separate useEffect
     } catch (error) {
       console.error('Error in getProfileData:', error);
       const username = localStorage.getItem('username') || 'User';
@@ -240,8 +210,55 @@ const Profile = () => {
     setInlineValues((v) => ({ ...v, [key]: original }));
   };
 
+  // Fetch recent work and projects
+  const fetchRecentWork = async () => {
+    try {
+      setLoadingRecentWork(true);
+      const accessToken = getToken("accessToken");
+      if (!accessToken) return;
+
+      const response = await axios.get(`${BASE_API_URL}/auth/recent-work/`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (response.data?.results) {
+        setRecentTasks(response.data.results);
+      }
+    } catch (error) {
+      console.error('Error fetching recent work:', error);
+      // Don't show error toast for this - just use empty array
+      setRecentTasks([]);
+    } finally {
+      setLoadingRecentWork(false);
+    }
+  };
+
+  const fetchUserProjects = async () => {
+    try {
+      const accessToken = getToken("accessToken");
+      if (!accessToken) return;
+
+      const response = await axios.get(`${BASE_API_URL}/auth/projects/`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (response.data?.results) {
+        setUserProjects(response.data.results);
+      }
+    } catch (error) {
+      console.error('Error fetching user projects:', error);
+      setUserProjects([]);
+    }
+  };
+
   useEffect(() => {
     getProfileData();
+    fetchRecentWork();
+    fetchUserProjects();
   }, []);
 
   if (!profileData) {
@@ -784,67 +801,105 @@ const Profile = () => {
                   </p>
                 </div>
 
-                <div className="space-y-3 sm:space-y-4">
-                  {recentTasks.map((task) => (
-                    <Paper
-                      key={task.id}
-                      elevation={0}
-                      className="p-3 sm:p-4 hover:shadow-md transition-all duration-200 cursor-pointer border border-gray-100 hover:border-gray-200 rounded-lg group"
-                    >
-                      <div className="flex items-start space-x-3 sm:space-x-4">
-                        <div className="mt-1 p-2 rounded-lg bg-gray-50 group-hover:bg-gray-100 transition-colors">
-                          {task.type === 'subtask' && (
-                            <LinkIcon className="text-blue-600" sx={{ fontSize: { xs: 20, sm: 22 } }} />
-                          )}
-                          {task.type === 'task' && task.status === 'completed' && (
-                            <CheckCircleIcon className="text-green-600" sx={{ fontSize: { xs: 20, sm: 22 } }} />
-                          )}
-                          {task.type === 'task' && task.status === 'bookmarked' && (
-                            <BookmarkIcon className="text-yellow-500" sx={{ fontSize: { xs: 20, sm: 22 } }} />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Typography className="font-semibold text-gray-900 text-sm sm:text-base group-hover:text-blue-600 transition-colors">
-                              {task.title}
-                            </Typography>
-                            {task.status === 'completed' && (
-                              <Chip 
-                                label="Completed" 
-                                size="small" 
-                                sx={{ 
-                                  height: 20, 
-                                  fontSize: '0.7rem',
-                                  bgcolor: '#10b981',
-                                  color: 'white',
-                                  fontWeight: 600
-                                }} 
-                              />
-                            )}
-                            {task.status === 'bookmarked' && (
-                              <Chip 
-                                label="Bookmarked" 
-                                size="small" 
-                                sx={{ 
-                                  height: 20, 
-                                  fontSize: '0.7rem',
-                                  bgcolor: '#f59e0b',
-                                  color: 'white',
-                                  fontWeight: 600
-                                }} 
-                              />
-                            )}
+                {loadingRecentWork ? (
+                  <div className="flex items-center justify-center py-8">
+                    <CircularProgress size={32} />
+                  </div>
+                ) : recentTasks.length > 0 ? (
+                  <div className="space-y-3 sm:space-y-4">
+                    {recentTasks.map((task) => {
+                      const isSprintTask = task.type === 'sprint_task';
+                      const isCompleted = task.status === 'completed' || task.status === 'done';
+                      const isInReview = task.status === 'in_review' || task.status === 'review';
+                      const isInProgress = task.status === 'in_progress' || task.status === 'pending';
+                      
+                      return (
+                        <Paper
+                          key={`${task.type}-${task.id}`}
+                          elevation={0}
+                          className="p-3 sm:p-4 hover:shadow-md transition-all duration-200 cursor-pointer border border-gray-100 hover:border-gray-200 rounded-lg group"
+                          onClick={() => {
+                            if (isSprintTask && task.sprint_id) {
+                              navigate(`/sprints/${task.sprint_id}`);
+                            } else if (task.project_id) {
+                              // Navigate to project or task detail
+                              navigate(`/tasks`);
+                            }
+                          }}
+                        >
+                          <div className="flex items-start space-x-3 sm:space-x-4">
+                            <div className="mt-1 p-2 rounded-lg bg-gray-50 group-hover:bg-gray-100 transition-colors">
+                              {isSprintTask && (
+                                <LinkIcon className="text-blue-600" sx={{ fontSize: { xs: 20, sm: 22 } }} />
+                              )}
+                              {!isSprintTask && isCompleted && (
+                                <CheckCircleIcon className="text-green-600" sx={{ fontSize: { xs: 20, sm: 22 } }} />
+                              )}
+                              {!isSprintTask && !isCompleted && (
+                                <WorkIcon className="text-blue-600" sx={{ fontSize: { xs: 20, sm: 22 } }} />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <Typography className="font-semibold text-gray-900 text-sm sm:text-base group-hover:text-blue-600 transition-colors">
+                                  {task.title}
+                                </Typography>
+                                {isCompleted && (
+                                  <Chip 
+                                    label="Completed" 
+                                    size="small" 
+                                    sx={{ 
+                                      height: 20, 
+                                      fontSize: '0.7rem',
+                                      bgcolor: '#10b981',
+                                      color: 'white',
+                                      fontWeight: 600
+                                    }} 
+                                  />
+                                )}
+                                {isInReview && (
+                                  <Chip 
+                                    label="In Review" 
+                                    size="small" 
+                                    sx={{ 
+                                      height: 20, 
+                                      fontSize: '0.7rem',
+                                      bgcolor: '#f59e0b',
+                                      color: 'white',
+                                      fontWeight: 600
+                                    }} 
+                                  />
+                                )}
+                                {isInProgress && (
+                                  <Chip 
+                                    label="In Progress" 
+                                    size="small" 
+                                    sx={{ 
+                                      height: 20, 
+                                      fontSize: '0.7rem',
+                                      bgcolor: '#3b82f6',
+                                      color: 'white',
+                                      fontWeight: 600
+                                    }} 
+                                  />
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                                <span className="font-medium">{task.project || 'No Project'}</span>
+                                <span>·</span>
+                                <span>{task.created_by || 'You created this'} {task.time_ago || 'recently'}</span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
-                            <span className="font-medium">{task.project}</span>
-                            <span>·</span>
-                            <span>You created this {task.createdAt}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </Paper>
-                  ))}
-                </div>
+                        </Paper>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500 text-sm">
+                    No recent work found. Start working on tasks to see them here.
+                  </div>
+                )}
 
                 <div className="mt-5 sm:mt-6 pt-4 border-t border-gray-200">
                   <Link
@@ -863,17 +918,46 @@ const Profile = () => {
                   Places you work in
                 </Typography>
 
-                <div className="flex flex-col items-center justify-center py-8 sm:py-10 md:py-12 text-center px-4">
-                  <div className="mb-3 sm:mb-4">
-                    <MapIcon className="text-gray-400" sx={{ fontSize: { xs: 60, sm: 70, md: 80 } }} />
+                {userProjects.length > 0 ? (
+                  <div className="space-y-3">
+                    {userProjects.map((project) => (
+                      <Paper
+                        key={project.id}
+                        elevation={0}
+                        className="p-3 sm:p-4 hover:shadow-md transition-all duration-200 cursor-pointer border border-gray-100 hover:border-gray-200 rounded-lg group"
+                        onClick={() => navigate(`/projects`)}
+                      >
+                        <div className="flex items-start space-x-3">
+                          <div className="mt-1 p-2 rounded-lg bg-blue-50 group-hover:bg-blue-100 transition-colors">
+                            <BusinessIcon className="text-blue-600" sx={{ fontSize: { xs: 20, sm: 22 } }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <Typography className="font-semibold text-gray-900 text-sm sm:text-base group-hover:text-blue-600 transition-colors mb-1">
+                              {project.title}
+                            </Typography>
+                            {project.description && (
+                              <Typography variant="body2" className="text-gray-600 text-xs sm:text-sm line-clamp-2">
+                                {project.description}
+                              </Typography>
+                            )}
+                          </div>
+                        </div>
+                      </Paper>
+                    ))}
                   </div>
-                  <Typography variant="h6" className="text-gray-700 mb-1 sm:mb-2" sx={{ fontSize: { xs: '0.95rem', sm: '1.05rem', md: '1.15rem' } }}>
-                    We don't have places to show here yet
-                  </Typography>
-                  <Typography variant="body2" className="text-gray-600 text-xs sm:text-sm">
-                    There are no projects or spaces you've worked in across the last 90 days.
-                  </Typography>
-                </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 sm:py-10 md:py-12 text-center px-4">
+                    <div className="mb-3 sm:mb-4">
+                      <MapIcon className="text-gray-400" sx={{ fontSize: { xs: 60, sm: 70, md: 80 } }} />
+                    </div>
+                    <Typography variant="h6" className="text-gray-700 mb-1 sm:mb-2" sx={{ fontSize: { xs: '0.95rem', sm: '1.05rem', md: '1.15rem' } }}>
+                      We don't have places to show here yet
+                    </Typography>
+                    <Typography variant="body2" className="text-gray-600 text-xs sm:text-sm">
+                      There are no projects or spaces you've worked in across the last 90 days.
+                    </Typography>
+                  </div>
+                )}
               </div>
 
               {/* Feedback Section */}

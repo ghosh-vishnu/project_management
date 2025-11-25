@@ -12,7 +12,25 @@ import {
   Grid2,
   Grid,
   TablePagination,
+  InputAdornment,
+  Select,
+  FormControl,
+  Chip,
+  Card,
+  CardContent,
+  Tooltip,
 } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
+import ClearIcon from "@mui/icons-material/Clear";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import SortIcon from "@mui/icons-material/Sort";
+import DownloadIcon from "@mui/icons-material/Download";
+import ViewModuleIcon from "@mui/icons-material/ViewModule";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import PhoneIcon from "@mui/icons-material/Phone";
+import EmailIcon from "@mui/icons-material/Email";
+import PersonIcon from "@mui/icons-material/Person";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import { data, Link, useNavigate } from "react-router";
 import AddIcon from "@mui/icons-material/Add";
 import { Edit, Delete, Add, Height, RemoveRedEye } from "@mui/icons-material";
@@ -132,6 +150,26 @@ const Employee = () => {
   // Employee data variable
   const [employeeData, setEmployeeData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Search functionality
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredEmployeeData, setFilteredEmployeeData] = useState([]);
+  
+  // Advanced features
+  const [sortBy, setSortBy] = useState('name'); // name, date, department
+  const [sortOrder, setSortOrder] = useState('asc'); // asc, desc
+  const [filterDepartment, setFilterDepartment] = useState('all');
+  const [filterDesignation, setFilterDesignation] = useState('all');
+  const [viewMode, setViewMode] = useState('list'); // list, grid
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  
+  // Statistics
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    inactive: 0,
+    departments: {}
+  });
 
   // To fetch the employee data list
   const getEmployeeData = async (pageNumber, pageSize, showInactiveEmployees = false) => {
@@ -185,10 +223,157 @@ const Employee = () => {
     }
   };
 
+  // Calculate statistics
+  useEffect(() => {
+    if (employeeData.length > 0) {
+      const activeCount = employeeData.filter(emp => emp.is_active).length;
+      const inactiveCount = employeeData.length - activeCount;
+      
+      // Department stats
+      const deptStats = {};
+      employeeData.forEach(emp => {
+        const dept = emp.department || 'Unassigned';
+        deptStats[dept] = (deptStats[dept] || 0) + 1;
+      });
+      
+      setStats({
+        total: employeeData.length,
+        active: activeCount,
+        inactive: inactiveCount,
+        departments: deptStats
+      });
+    }
+  }, [employeeData]);
+
+  // Filter and sort employees
+  useEffect(() => {
+    let filtered = [...employeeData];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((employee) => {
+        const name = (employee.name || '').toLowerCase();
+        const email = (employee.email || employee.user?.email || '').toLowerCase();
+        const designation = (employee.designation || '').toLowerCase();
+        const contactNo = (employee.contact_no || '').toLowerCase();
+        const employeeId = (employee.employee_id || '').toLowerCase();
+        const department = (employee.department || '').toLowerCase();
+
+        return (
+          name.includes(query) ||
+          email.includes(query) ||
+          designation.includes(query) ||
+          contactNo.includes(query) ||
+          employeeId.includes(query) ||
+          department.includes(query)
+        );
+      });
+    }
+
+    // Apply department filter
+    if (filterDepartment !== 'all') {
+      filtered = filtered.filter(emp => (emp.department || 'Unassigned') === filterDepartment);
+    }
+
+    // Apply designation filter
+    if (filterDesignation !== 'all') {
+      filtered = filtered.filter(emp => (emp.designation || 'Unassigned') === filterDesignation);
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let aVal, bVal;
+      
+      switch (sortBy) {
+        case 'name':
+          aVal = (a.name || '').toLowerCase();
+          bVal = (b.name || '').toLowerCase();
+          break;
+        case 'date':
+          aVal = new Date(a.joining_date || 0);
+          bVal = new Date(b.joining_date || 0);
+          break;
+        case 'department':
+          aVal = (a.department || 'Unassigned').toLowerCase();
+          bVal = (b.department || 'Unassigned').toLowerCase();
+          break;
+        default:
+          aVal = (a.name || '').toLowerCase();
+          bVal = (b.name || '').toLowerCase();
+      }
+      
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    setFilteredEmployeeData(filtered);
+  }, [searchQuery, employeeData, sortBy, sortOrder, filterDepartment, filterDesignation]);
+
   // Use Effect
   useEffect(() => {
     getEmployeeData(page, rowsPerPage, showInactive);
   }, [page, rowsPerPage, showInactive]);
+  
+  // Get unique departments and designations for filters
+  const uniqueDepartments = React.useMemo(() => {
+    const depts = new Set();
+    employeeData.forEach(emp => {
+      if (emp.department) depts.add(emp.department);
+    });
+    return ['all', ...Array.from(depts).sort()];
+  }, [employeeData]);
+
+  const uniqueDesignations = React.useMemo(() => {
+    const designations = new Set();
+    employeeData.forEach(emp => {
+      if (emp.designation) designations.add(emp.designation);
+    });
+    return ['all', ...Array.from(designations).sort()];
+  }, [employeeData]);
+
+  // Export to CSV function
+  const exportToCSV = () => {
+    const headers = ['Name', 'Email', 'Contact', 'Department', 'Designation', 'Joining Date', 'Status'];
+    const rows = filteredEmployeeData.map(emp => [
+      emp.name || '',
+      emp.email || emp.user?.email || '',
+      emp.contact_no || '',
+      emp.department || 'N/A',
+      emp.designation || 'N/A',
+      emp.joining_date || '',
+      emp.is_active ? 'Active' : 'Inactive'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `employees-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  // Toggle employee selection
+  const toggleEmployeeSelection = (employeeId) => {
+    setSelectedEmployees(prev => 
+      prev.includes(employeeId)
+        ? prev.filter(id => id !== employeeId)
+        : [...prev, employeeId]
+    );
+  };
+
+  const selectAllEmployees = () => {
+    if (selectedEmployees.length === filteredEmployeeData.length) {
+      setSelectedEmployees([]);
+    } else {
+      setSelectedEmployees(filteredEmployeeData.map(emp => emp.id));
+    }
+  };
 
   const {
     register,
@@ -264,11 +449,156 @@ const Employee = () => {
         </Breadcrumbs>
       </div>
 
+      {/* Statistics Cards */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>Total Employees</Typography>
+                <Typography variant="h4" sx={{ fontWeight: 'bold', mt: 1 }}>{stats.total}</Typography>
+              </div>
+              <PersonIcon sx={{ fontSize: 48, opacity: 0.3 }} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)', color: 'white' }}>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>Active</Typography>
+                <Typography variant="h4" sx={{ fontWeight: 'bold', mt: 1 }}>{stats.active}</Typography>
+              </div>
+              <TrendingUpIcon sx={{ fontSize: 48, opacity: 0.3 }} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>Inactive</Typography>
+                <Typography variant="h4" sx={{ fontWeight: 'bold', mt: 1 }}>{stats.inactive}</Typography>
+              </div>
+              <PersonIcon sx={{ fontSize: 48, opacity: 0.3 }} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>Departments</Typography>
+                <Typography variant="h4" sx={{ fontWeight: 'bold', mt: 1 }}>{Object.keys(stats.departments).length}</Typography>
+              </div>
+              <PersonIcon sx={{ fontSize: 48, opacity: 0.3 }} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="mt-6 flex flex-row flex-wrap place-content-between  gap-x-2 gap-y-4">
         <div>
           <h4 className="text-2xl font-bold">Employee Management</h4>
         </div>
         <div className="flex gap-2 items-center">
+          {/* Search Bar */}
+          <TextField
+            size="small"
+            placeholder="Search employees..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: 'rgba(0,0,0,0.54)' }} />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery && (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchQuery('')}
+                    sx={{ color: 'rgba(0,0,0,0.54)' }}
+                  >
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              minWidth: '280px',
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: 'white',
+                borderRadius: '8px',
+              },
+            }}
+          />
+          
+          {/* Sort By */}
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <Select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              sx={{ backgroundColor: 'white' }}
+              startAdornment={
+                <InputAdornment position="start">
+                  <SortIcon sx={{ fontSize: 18, color: 'rgba(0,0,0,0.54)', mr: 1 }} />
+                </InputAdornment>
+              }
+            >
+              <MenuItem value="name">Name</MenuItem>
+              <MenuItem value="date">Joining Date</MenuItem>
+              <MenuItem value="department">Department</MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Sort Order */}
+          <Tooltip title={sortOrder === 'asc' ? 'Sort Descending' : 'Sort Ascending'}>
+            <IconButton
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              sx={{ 
+                backgroundColor: 'white',
+                border: '1px solid rgba(0,0,0,0.23)',
+                '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' }
+              }}
+            >
+              <SortIcon sx={{ transform: sortOrder === 'desc' ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
+            </IconButton>
+          </Tooltip>
+
+          {/* Export Button */}
+          <Tooltip title="Export to CSV">
+            <IconButton
+              onClick={exportToCSV}
+              disabled={filteredEmployeeData.length === 0}
+              sx={{ 
+                backgroundColor: 'white',
+                border: '1px solid rgba(0,0,0,0.23)',
+                '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' }
+              }}
+            >
+              <DownloadIcon />
+            </IconButton>
+          </Tooltip>
+
+          {/* View Toggle */}
+          <Tooltip title={viewMode === 'list' ? 'Grid View' : 'List View'}>
+            <IconButton
+              onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
+              sx={{ 
+                backgroundColor: 'white',
+                border: '1px solid rgba(0,0,0,0.23)',
+                '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' }
+              }}
+            >
+              {viewMode === 'list' ? <ViewModuleIcon /> : <ViewListIcon />}
+            </IconButton>
+          </Tooltip>
+
           <button
             onClick={() => getEmployeeData(page, rowsPerPage, showInactive)}
             disabled={isLoading}
@@ -294,84 +624,310 @@ const Employee = () => {
         </div>
       </div>
 
+      {/* Advanced Filters */}
+      <div className="bg-white mt-4 px-4 py-3 rounded-lg shadow-md flex gap-3 items-center flex-wrap">
+        <FilterListIcon sx={{ color: 'rgba(0,0,0,0.54)' }} />
+        <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>Filters:</Typography>
+        
+        {/* Department Filter */}
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <Select
+            value={filterDepartment}
+            onChange={(e) => setFilterDepartment(e.target.value)}
+            displayEmpty
+            sx={{ backgroundColor: 'white' }}
+          >
+            <MenuItem value="all">All Departments</MenuItem>
+            {uniqueDepartments.filter(d => d !== 'all').map((dept) => (
+              <MenuItem key={dept} value={dept}>{dept}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {/* Designation Filter */}
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <Select
+            value={filterDesignation}
+            onChange={(e) => setFilterDesignation(e.target.value)}
+            displayEmpty
+            sx={{ backgroundColor: 'white' }}
+          >
+            <MenuItem value="all">All Designations</MenuItem>
+            {uniqueDesignations.filter(d => d !== 'all').map((desig) => (
+              <MenuItem key={desig} value={desig}>{desig}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {/* Active Filters Chips */}
+        {(filterDepartment !== 'all' || filterDesignation !== 'all') && (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {filterDepartment !== 'all' && (
+              <Chip
+                label={`Dept: ${filterDepartment}`}
+                onDelete={() => setFilterDepartment('all')}
+                size="small"
+                color="primary"
+              />
+            )}
+            {filterDesignation !== 'all' && (
+              <Chip
+                label={`Designation: ${filterDesignation}`}
+                onDelete={() => setFilterDesignation('all')}
+                size="small"
+                color="primary"
+              />
+            )}
+          </Box>
+        )}
+      </div>
+
       {/* Data list table */}
-      <div className="bg-white mt-8 px-4 py-2 rounded-lg shadow-[2px_2px_5px_2px] shadow-gray-400">
+      <div className="bg-white mt-4 px-4 py-2 rounded-lg shadow-[2px_2px_5px_2px] shadow-gray-400">
+        {/* Search Results Info */}
+        {(searchQuery || filterDepartment !== 'all' || filterDesignation !== 'all') && (
+          <div className="py-3 border-b border-gray-200">
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              {filteredEmployeeData.length > 0 
+                ? `Found ${filteredEmployeeData.length} employee${filteredEmployeeData.length !== 1 ? 's' : ''} matching "${searchQuery}"`
+                : `No employees found matching "${searchQuery}"`
+              }
+            </Typography>
+          </div>
+        )}
+        
         {isLoading ? (
           <div className="text-center py-8">
             <div className="text-lg font-semibold text-gray-600">Loading employees...</div>
           </div>
-        ) : employeeData.length === 0 ? (
+        ) : filteredEmployeeData.length === 0 ? (
           <div className="text-center py-8">
-            <div className="text-lg font-semibold text-gray-600">No employees found</div>
+            <div className="text-lg font-semibold text-gray-600">
+              {searchQuery ? `No employees found matching "${searchQuery}"` : "No employees found"}
+            </div>
             <div className="text-sm text-gray-500 mt-2">
-              {showInactive ? "No inactive employees found" : "No active employees found. Try adding a new employee or show inactive employees."}
+              {searchQuery 
+                ? "Try adjusting your search query or clear the search to see all employees."
+                : showInactive 
+                  ? "No inactive employees found" 
+                  : "No active employees found. Try adding a new employee or show inactive employees."
+              }
             </div>
           </div>
-        ) : (
-          employeeData.map((data) => (
+        ) : viewMode === 'list' ? (
+          filteredEmployeeData.map((data) => (
           <div
             key={data.id}
-            className="flex justify-between items-center border-b p-3"
+            className={`flex justify-between items-center border-b p-3 hover:bg-gray-50 transition-colors ${
+              selectedEmployees.includes(data.id) ? 'bg-blue-50 border-blue-200' : ''
+            }`}
           >
-            <div className="flex gap-4 ">
-              <div className="w-[3rem] h-[3rem] overflow-hidden ">
-                <img
-                  className=" w-full h-full rounded-[50%]"
-                  src="/profile.png"
-                  alt="profile"
-                  loading="true"
-                />
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold">{data.name}</p>
-                <p className="text-sm text-gray-500">
-                  {data.email || data.user?.email} — {data.designation || 'Employee'}
-                </p>
-                <div className="flex gap-4 mt-1 text-sm">
-                  <span>📞 {data.contact_no}</span>
-                  <span>Joined: {new Date(data.joining_date).toLocaleDateString('en-IN')}</span>
-                  <span className={`font-semibold ${data.is_active ? 'text-green-600' : 'text-red-600'}`}>
-                    {data.is_active ? '✓ Active' : '✗ Inactive'}
-                  </span>
+            {/* Selection Checkbox */}
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={selectedEmployees.includes(data.id)}
+                onChange={() => toggleEmployeeSelection(data.id)}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <div className="flex gap-4 ">
+                <div className="w-[3rem] h-[3rem] overflow-hidden ">
+                  <img
+                    className=" w-full h-full rounded-[50%]"
+                    src="/profile.png"
+                    alt="profile"
+                    loading="true"
+                  />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold">{data.name}</p>
+                  <p className="text-sm text-gray-500">
+                    {data.email || data.user?.email} — {data.designation || 'Employee'}
+                  </p>
+                  <div className="flex gap-4 mt-1 text-sm">
+                    <span>📞 {data.contact_no}</span>
+                    <span>Joined: {new Date(data.joining_date).toLocaleDateString('en-IN')}</span>
+                    <span className={`font-semibold ${data.is_active ? 'text-green-600' : 'text-red-600'}`}>
+                      {data.is_active ? '✓ Active' : '✗ Inactive'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
             <div className="flex gap-1">
-              <IconButton
-                onClick={() => handleViewOpen(data)}
-                aria-label="view"
-                color="success"
-              >
-                <RemoveRedEyeIcon />
-              </IconButton>
-              <IconButton
-                color="warning"
-                onClick={() => handleEditEmployeeOpen(data)}
-              >
-                <Edit />
-              </IconButton>
-              <IconButton
-                onClick={() => handleDeleteOpen(data)}
-                aria-label="delete"
-                color="error"
-              >
-                <Delete />
-              </IconButton>
+              <Tooltip title="View Details">
+                <IconButton
+                  onClick={() => handleViewOpen(data)}
+                  aria-label="view"
+                  color="success"
+                  size="small"
+                >
+                  <RemoveRedEyeIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Edit Employee">
+                <IconButton
+                  color="warning"
+                  onClick={() => handleEditEmployeeOpen(data)}
+                  size="small"
+                >
+                  <Edit />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Call">
+                <IconButton
+                  onClick={() => window.open(`tel:${data.contact_no}`)}
+                  color="primary"
+                  size="small"
+                >
+                  <PhoneIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Email">
+                <IconButton
+                  onClick={() => window.open(`mailto:${data.email || data.user?.email}`)}
+                  color="info"
+                  size="small"
+                >
+                  <EmailIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete">
+                <IconButton
+                  onClick={() => handleDeleteOpen(data)}
+                  aria-label="delete"
+                  color="error"
+                  size="small"
+                >
+                  <Delete />
+                </IconButton>
+              </Tooltip>
             </div>
           </div>
           ))
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 py-4">
+            {filteredEmployeeData.map((data) => (
+              <Card
+                key={data.id}
+                sx={{
+                  border: selectedEmployees.includes(data.id) ? '2px solid #1976d2' : '1px solid #e0e0e0',
+                  '&:hover': { boxShadow: 4, transform: 'translateY(-2px)' },
+                  transition: 'all 0.3s',
+                  cursor: 'pointer'
+                }}
+                onClick={() => toggleEmployeeSelection(data.id)}
+              >
+                <CardContent>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
+                        {data.name?.charAt(0) || 'E'}
+                      </div>
+                      <div>
+                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                          {data.name}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          {data.employee_id || 'N/A'}
+                        </Typography>
+                      </div>
+                    </div>
+                    <Chip
+                      label={data.is_active ? 'Active' : 'Inactive'}
+                      size="small"
+                      color={data.is_active ? 'success' : 'error'}
+                      sx={{ height: 24 }}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Typography variant="body2" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <EmailIcon sx={{ fontSize: 16 }} />
+                      {data.email || data.user?.email || 'N/A'}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PhoneIcon sx={{ fontSize: 16 }} />
+                      {data.contact_no || 'N/A'}
+                    </Typography>
+                    <div className="flex gap-2 flex-wrap mt-2">
+                      {data.department && (
+                        <Chip label={data.department} size="small" variant="outlined" />
+                      )}
+                      {data.designation && (
+                        <Chip label={data.designation} size="small" variant="outlined" color="primary" />
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 mt-4 pt-3 border-t">
+                    <Tooltip title="View">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewOpen(data);
+                        }}
+                        color="success"
+                      >
+                        <RemoveRedEyeIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Edit">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditEmployeeOpen(data);
+                        }}
+                        color="warning"
+                      >
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Call">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`tel:${data.contact_no}`);
+                        }}
+                        color="primary"
+                      >
+                        <PhoneIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Email">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`mailto:${data.email || data.user?.email}`);
+                        }}
+                        color="info"
+                      >
+                        <EmailIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
 
-        {/* Pagination */}
-        <TablePagination
-          component="div"
-          count={count}
-          page={page}
-          onPageChange={handleChangePage}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          rowsPerPageOptions={[25, 50, 100]}
-        />
+        {/* Pagination - Only show if not searching */}
+        {!searchQuery && (
+          <TablePagination
+            component="div"
+            count={count}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[25, 50, 100]}
+          />
+        )}
       </div>
 
       {/* Delete Employee Modal */}
