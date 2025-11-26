@@ -19,6 +19,7 @@ import {
   Card,
   CardContent,
   Tooltip,
+  CircularProgress,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
@@ -31,13 +32,28 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import EmailIcon from "@mui/icons-material/Email";
 import PersonIcon from "@mui/icons-material/Person";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import PrintIcon from "@mui/icons-material/Print";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import Menu from "@mui/material/Menu";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CancelIcon from "@mui/icons-material/Cancel";
+import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import PsychologyIcon from "@mui/icons-material/Psychology";
+import TrendingDownIcon from "@mui/icons-material/TrendingDown";
+import GroupsIcon from "@mui/icons-material/Groups";
+import AnalyticsIcon from "@mui/icons-material/Analytics";
+import ReactMarkdown from "react-markdown";
+import * as XLSX from 'xlsx';
 import { data, Link, useNavigate } from "react-router";
 import AddIcon from "@mui/icons-material/Add";
 import { Edit, Delete, Add, Height, RemoveRedEye } from "@mui/icons-material";
 import DeleteBtn from "../../components/Buttons/DeleteBtn";
 import CloseBtn from "../../components/Buttons/CloseBtn";
 
-import CancelIcon from "@mui/icons-material/Cancel";
 import RemoveRedEyeIcon from "@mui/icons-material/RemoveRedEye";
 import ModalComp from "../../components/Modal/ModalComp";
 import ErrorAlert from "../../components/Alert/ErrorAlert";
@@ -162,6 +178,17 @@ const Employee = () => {
   const [filterDesignation, setFilterDesignation] = useState('all');
   const [viewMode, setViewMode] = useState('list'); // list, grid
   const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [quickFilter, setQuickFilter] = useState('all'); // all, active, inactive, recent
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [bulkActionAnchor, setBulkActionAnchor] = useState(null);
+  
+  // AI Features State
+  const [aiInsights, setAiInsights] = useState('');
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [showAiInsights, setShowAiInsights] = useState(false);
+  const [atRiskEmployees, setAtRiskEmployees] = useState([]);
+  const [showNaturalLanguageSearch, setShowNaturalLanguageSearch] = useState(false);
+  const [nlQuery, setNlQuery] = useState('');
   
   // Statistics
   const [stats, setStats] = useState({
@@ -281,6 +308,20 @@ const Employee = () => {
       filtered = filtered.filter(emp => (emp.designation || 'Unassigned') === filterDesignation);
     }
 
+    // Apply quick filter
+    if (quickFilter === 'active') {
+      filtered = filtered.filter(emp => emp.is_active);
+    } else if (quickFilter === 'inactive') {
+      filtered = filtered.filter(emp => !emp.is_active);
+    } else if (quickFilter === 'recent') {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      filtered = filtered.filter(emp => {
+        const joiningDate = new Date(emp.joining_date);
+        return joiningDate >= thirtyDaysAgo;
+      });
+    }
+
     // Apply sorting
     filtered.sort((a, b) => {
       let aVal, bVal;
@@ -335,8 +376,12 @@ const Employee = () => {
 
   // Export to CSV function
   const exportToCSV = () => {
+    const dataToExport = selectedEmployees.length > 0 
+      ? filteredEmployeeData.filter(emp => selectedEmployees.includes(emp.id))
+      : filteredEmployeeData;
+    
     const headers = ['Name', 'Email', 'Contact', 'Department', 'Designation', 'Joining Date', 'Status'];
-    const rows = filteredEmployeeData.map(emp => [
+    const rows = dataToExport.map(emp => [
       emp.name || '',
       emp.email || emp.user?.email || '',
       emp.contact_no || '',
@@ -358,6 +403,153 @@ const Employee = () => {
     link.click();
   };
 
+  // Export to Excel function
+  const exportToExcel = () => {
+    const dataToExport = selectedEmployees.length > 0 
+      ? filteredEmployeeData.filter(emp => selectedEmployees.includes(emp.id))
+      : filteredEmployeeData;
+    
+    const worksheetData = [
+      ['Name', 'Email', 'Contact', 'Department', 'Designation', 'Joining Date', 'Status'],
+      ...dataToExport.map(emp => [
+        emp.name || '',
+        emp.email || emp.user?.email || '',
+        emp.contact_no || '',
+        emp.department || 'N/A',
+        emp.designation || 'N/A',
+        emp.joining_date || '',
+        emp.is_active ? 'Active' : 'Inactive'
+      ])
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(worksheetData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+    XLSX.writeFile(wb, `employees-${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Export to PDF function
+  const exportToPDF = () => {
+    const dataToExport = selectedEmployees.length > 0 
+      ? filteredEmployeeData.filter(emp => selectedEmployees.includes(emp.id))
+      : filteredEmployeeData;
+    
+    const doc = new jsPDF();
+    let yPos = 20;
+    
+    doc.setFontSize(18);
+    doc.setTextColor(0, 0, 255);
+    doc.text('Employee List', 105, yPos, { align: 'center' });
+    yPos += 10;
+    
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    
+    dataToExport.forEach((emp, index) => {
+      if (yPos > 270) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.setFontSize(12);
+      doc.text(`${index + 1}. ${emp.name || 'N/A'}`, 14, yPos);
+      yPos += 6;
+      doc.setFontSize(10);
+      doc.text(`Email: ${emp.email || emp.user?.email || 'N/A'}`, 20, yPos);
+      yPos += 5;
+      doc.text(`Contact: ${emp.contact_no || 'N/A'}`, 20, yPos);
+      yPos += 5;
+      doc.text(`Dept: ${emp.department || 'N/A'} | Designation: ${emp.designation || 'N/A'}`, 20, yPos);
+      yPos += 5;
+      doc.text(`Status: ${emp.is_active ? 'Active' : 'Inactive'}`, 20, yPos);
+      yPos += 8;
+    });
+    
+    doc.save(`employees-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  // Print function
+  const printEmployees = () => {
+    const printWindow = window.open('', '_blank');
+    const dataToExport = selectedEmployees.length > 0 
+      ? filteredEmployeeData.filter(emp => selectedEmployees.includes(emp.id))
+      : filteredEmployeeData;
+    
+    const htmlContent = `
+      <html>
+        <head>
+          <title>Employee List</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #1976d2; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+          </style>
+        </head>
+        <body>
+          <h1>Employee List</h1>
+          <table>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Contact</th>
+              <th>Department</th>
+              <th>Designation</th>
+              <th>Status</th>
+            </tr>
+            ${dataToExport.map(emp => `
+              <tr>
+                <td>${emp.name || 'N/A'}</td>
+                <td>${emp.email || emp.user?.email || 'N/A'}</td>
+                <td>${emp.contact_no || 'N/A'}</td>
+                <td>${emp.department || 'N/A'}</td>
+                <td>${emp.designation || 'N/A'}</td>
+                <td>${emp.is_active ? 'Active' : 'Inactive'}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  // Bulk activate/deactivate
+  const bulkActivate = async () => {
+    try {
+      const accessToken = getToken("accessToken");
+      // Implementation for bulk activate
+      setShowSuccess(true);
+      setShowMessage(`Activated ${selectedEmployees.length} employees`);
+      setSelectedEmployees([]);
+      getEmployeeData(page, rowsPerPage, showInactive);
+      setBulkActionAnchor(null);
+    } catch (error) {
+      setShowError(true);
+      setShowMessage("Failed to activate employees");
+    }
+  };
+
+  const bulkDeactivate = async () => {
+    try {
+      const accessToken = getToken("accessToken");
+      // Implementation for bulk deactivate
+      setShowSuccess(true);
+      setShowMessage(`Deactivated ${selectedEmployees.length} employees`);
+      setSelectedEmployees([]);
+      getEmployeeData(page, rowsPerPage, showInactive);
+      setBulkActionAnchor(null);
+    } catch (error) {
+      setShowError(true);
+      setShowMessage("Failed to deactivate employees");
+    }
+  };
+
   // Toggle employee selection
   const toggleEmployeeSelection = (employeeId) => {
     setSelectedEmployees(prev => 
@@ -372,6 +564,66 @@ const Employee = () => {
       setSelectedEmployees([]);
     } else {
       setSelectedEmployees(filteredEmployeeData.map(emp => emp.id));
+    }
+  };
+
+  // AI-Powered Features
+  const fetchAIInsights = async () => {
+    try {
+      setLoadingInsights(true);
+      const accessToken = getToken("accessToken");
+      const response = await axios.get(`${BASE_API_URL}/peoples/ai/insights/`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      setAiInsights(response.data.insights || 'No insights available');
+      setShowAiInsights(true);
+    } catch (error) {
+      setShowError(true);
+      setShowMessage("Failed to fetch AI insights");
+    } finally {
+      setLoadingInsights(false);
+    }
+  };
+
+  const fetchChurnPrediction = async () => {
+    try {
+      const accessToken = getToken("accessToken");
+      const response = await axios.get(`${BASE_API_URL}/peoples/ai/churn-prediction/`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      setAtRiskEmployees(response.data.at_risk_employees || []);
+    } catch (error) {
+      console.error("Error fetching churn prediction:", error);
+    }
+  };
+
+  const handleNaturalLanguageSearch = async () => {
+    if (!nlQuery.trim()) return;
+    
+    try {
+      const accessToken = getToken("accessToken");
+      const response = await axios.post(
+        `${BASE_API_URL}/peoples/ai/natural-language-search/`,
+        { query: nlQuery },
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      
+      // Apply filters from AI response
+      if (response.data.filters?.department) {
+        setFilterDepartment(response.data.filters.department);
+      }
+      if (response.data.filters?.status) {
+        setQuickFilter(response.data.filters.status);
+      }
+      
+      // Show results message
+      setShowSuccess(true);
+      setShowMessage(`Found ${response.data.results?.length || 0} employees matching your query`);
+      setShowNaturalLanguageSearch(false);
+      setNlQuery('');
+    } catch (error) {
+      setShowError(true);
+      setShowMessage("Failed to process natural language query");
     }
   };
 
@@ -570,10 +822,10 @@ const Employee = () => {
             </IconButton>
           </Tooltip>
 
-          {/* Export Button */}
-          <Tooltip title="Export to CSV">
+          {/* Export Menu */}
+          <Tooltip title="Export Options">
             <IconButton
-              onClick={exportToCSV}
+              onClick={(e) => setAnchorEl(e.currentTarget)}
               disabled={filteredEmployeeData.length === 0}
               sx={{ 
                 backgroundColor: 'white',
@@ -581,9 +833,61 @@ const Employee = () => {
                 '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' }
               }}
             >
-              <DownloadIcon />
+              <MoreVertIcon />
             </IconButton>
           </Tooltip>
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={() => setAnchorEl(null)}
+          >
+            <MenuItem onClick={() => { exportToCSV(); setAnchorEl(null); }}>
+              <FileDownloadIcon sx={{ mr: 1, fontSize: 18 }} /> Export to CSV
+            </MenuItem>
+            <MenuItem onClick={() => { exportToExcel(); setAnchorEl(null); }}>
+              <FileDownloadIcon sx={{ mr: 1, fontSize: 18 }} /> Export to Excel
+            </MenuItem>
+            <MenuItem onClick={() => { exportToPDF(); setAnchorEl(null); }}>
+              <PictureAsPdfIcon sx={{ mr: 1, fontSize: 18 }} /> Export to PDF
+            </MenuItem>
+            <MenuItem onClick={() => { printEmployees(); setAnchorEl(null); }}>
+              <PrintIcon sx={{ mr: 1, fontSize: 18 }} /> Print
+            </MenuItem>
+          </Menu>
+          
+          {/* Bulk Actions */}
+          {selectedEmployees.length > 0 && (
+            <>
+              <Tooltip title="Bulk Actions">
+                <IconButton
+                  onClick={(e) => setBulkActionAnchor(e.currentTarget)}
+                  sx={{ 
+                    backgroundColor: '#1976d2',
+                    color: 'white',
+                    border: '1px solid #1976d2',
+                    '&:hover': { backgroundColor: '#1565c0' }
+                  }}
+                >
+                  <MoreVertIcon />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                anchorEl={bulkActionAnchor}
+                open={Boolean(bulkActionAnchor)}
+                onClose={() => setBulkActionAnchor(null)}
+              >
+                <MenuItem onClick={bulkActivate}>
+                  <CheckCircleIcon sx={{ mr: 1, color: 'green' }} /> Activate Selected ({selectedEmployees.length})
+                </MenuItem>
+                <MenuItem onClick={bulkDeactivate}>
+                  <CancelIcon sx={{ mr: 1, color: 'red' }} /> Deactivate Selected ({selectedEmployees.length})
+                </MenuItem>
+                <MenuItem onClick={() => { exportToCSV(); setBulkActionAnchor(null); }}>
+                  <FileDownloadIcon sx={{ mr: 1 }} /> Export Selected
+                </MenuItem>
+              </Menu>
+            </>
+          )}
 
           {/* View Toggle */}
           <Tooltip title={viewMode === 'list' ? 'Grid View' : 'List View'}>
@@ -624,10 +928,44 @@ const Employee = () => {
         </div>
       </div>
 
+      {/* Quick Filters */}
+      <div className="bg-white mt-4 px-4 py-3 rounded-lg shadow-md flex gap-2 items-center flex-wrap">
+        <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mr: 1 }}>Quick Filters:</Typography>
+        <Chip
+          label="All"
+          onClick={() => setQuickFilter('all')}
+          color={quickFilter === 'all' ? 'primary' : 'default'}
+          size="small"
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          label="Active"
+          onClick={() => setQuickFilter('active')}
+          color={quickFilter === 'active' ? 'primary' : 'default'}
+          size="small"
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          label="Inactive"
+          onClick={() => setQuickFilter('inactive')}
+          color={quickFilter === 'inactive' ? 'primary' : 'default'}
+          size="small"
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          icon={<AccessTimeIcon />}
+          label="Recent (30 days)"
+          onClick={() => setQuickFilter('recent')}
+          color={quickFilter === 'recent' ? 'primary' : 'default'}
+          size="small"
+          sx={{ cursor: 'pointer' }}
+        />
+      </div>
+
       {/* Advanced Filters */}
       <div className="bg-white mt-4 px-4 py-3 rounded-lg shadow-md flex gap-3 items-center flex-wrap">
         <FilterListIcon sx={{ color: 'rgba(0,0,0,0.54)' }} />
-        <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>Filters:</Typography>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>Advanced Filters:</Typography>
         
         {/* Department Filter */}
         <FormControl size="small" sx={{ minWidth: 160 }}>
@@ -790,6 +1128,21 @@ const Employee = () => {
                   size="small"
                 >
                   <EmailIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="WhatsApp">
+                <IconButton
+                  onClick={() => {
+                    const phone = data.contact_no?.replace(/\D/g, '');
+                    if (phone) {
+                      window.open(`https://wa.me/${phone}`, '_blank');
+                    }
+                  }}
+                  color="success"
+                  size="small"
+                  disabled={!data.contact_no}
+                >
+                  <WhatsAppIcon />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Delete">

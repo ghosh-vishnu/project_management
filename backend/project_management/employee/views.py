@@ -9,6 +9,7 @@ from .serializers import (
     EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer
 )
 from .resume_parser import parse_resume
+from .ai_services import EmployeeAIService
 import random
 import string
 import os
@@ -546,4 +547,120 @@ def parse_resume_api(request):
             "ContactNumber": None, "AlternateContact": None,
             "Gender": None, "PAN": None, "Aadhaar": None, "DOB": None,
             "confidences": {}
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# AI-Powered Employee Features
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ai_employee_insights(request):
+    """AI endpoint to generate employee workforce insights"""
+    try:
+        employees = Employee.objects.select_related('user').all()
+        serializer = EmployeeListSerializer(employees, many=True)
+        
+        insights = EmployeeAIService.generate_employee_insights(serializer.data)
+        
+        return Response({
+            'insights': insights
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'error': f'Failed to generate insights: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ai_similar_employees(request, employee_id):
+    """AI endpoint to find similar employees"""
+    try:
+        employees = Employee.objects.select_related('user').all()
+        serializer = EmployeeListSerializer(employees, many=True)
+        
+        similar = EmployeeAIService.find_similar_employees(employee_id, serializer.data)
+        
+        return Response({
+            'similar_employees': similar
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'error': f'Failed to find similar employees: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ai_team_recommendations(request):
+    """AI endpoint to get team recommendations"""
+    try:
+        employees = Employee.objects.select_related('user').filter(is_active=True)
+        serializer = EmployeeListSerializer(employees, many=True)
+        
+        requirements = request.data.get('requirements', {})
+        recommendations = EmployeeAIService.generate_team_recommendations(serializer.data, requirements)
+        
+        return Response({
+            'recommendations': recommendations
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'error': f'Failed to generate recommendations: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ai_churn_prediction(request):
+    """AI endpoint to predict employee churn"""
+    try:
+        employees = Employee.objects.select_related('user').all()
+        serializer = EmployeeListSerializer(employees, many=True)
+        
+        at_risk = EmployeeAIService.predict_employee_churn(serializer.data)
+        
+        return Response({
+            'at_risk_employees': at_risk
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'error': f'Failed to predict churn: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ai_natural_language_search(request):
+    """AI endpoint to parse natural language queries"""
+    try:
+        query = request.data.get('query', '')
+        
+        if not query:
+            return Response({
+                'error': 'Query is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        filters = EmployeeAIService.analyze_natural_language_query(query)
+        
+        # Apply filters to get employees
+        employees_qs = Employee.objects.select_related('user')
+        
+        if filters.get('status') == 'active':
+            employees_qs = employees_qs.filter(is_active=True)
+        elif filters.get('status') == 'inactive':
+            employees_qs = employees_qs.filter(is_active=False)
+        
+        if filters.get('department'):
+            employees_qs = employees_qs.filter(department__icontains=filters['department'])
+        
+        employees = employees_qs.all()
+        serializer = EmployeeListSerializer(employees, many=True)
+        
+        return Response({
+            'filters': filters,
+            'results': serializer.data[:filters.get('limit', 50)]
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'error': f'Failed to process query: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

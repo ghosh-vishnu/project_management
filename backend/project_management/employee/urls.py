@@ -17,5 +17,12 @@ urlpatterns = [
     
     # Dashboard summary
     path('dashboard-summary/', views.dashboard_summary, name='dashboard-summary'),
+    
+    # AI endpoints
+    path('ai/insights/', views.ai_employee_insights, name='ai-employee-insights'),
+    path('ai/similar/<int:employee_id>/', views.ai_similar_employees, name='ai-similar-employees'),
+    path('ai/team-recommendations/', views.ai_team_recommendations, name='ai-team-recommendations'),
+    path('ai/churn-prediction/', views.ai_churn_prediction, name='ai-churn-prediction'),
+    path('ai/natural-language-search/', views.ai_natural_language_search, name='ai-natural-language-search'),
 ]
 
