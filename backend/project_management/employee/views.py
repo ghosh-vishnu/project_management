@@ -4,7 +4,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import User
 from django.db import transaction, models, models
+from django.utils import timezone
+from datetime import date, datetime, timedelta
 from .models import Employee, Address, BankDetails, Documents
+from .ai_services import DashboardAIService
 from .serializers import (
     EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer
 )
@@ -1154,7 +1157,547 @@ def ai_natural_language_search(request):
         results = EmployeeAIService.natural_language_search(query)
         return Response(results, status=status.HTTP_200_OK)
     except Exception as e:
-        return Response(
-            {'error': f'Error performing search: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return Response(
+                {'error': f'Error performing search: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# Dashboard AI Endpoints
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_ai_insights_comprehensive(request):
+    """Get comprehensive AI-powered dashboard insights"""
+    try:
+        from projects.models import Project
+        from tasks.models import Task
+        from finance.models import Income, Expense
+        from invoices.models import Invoice
+        
+        # Get project data
+        projects = Project.objects.all()
+        projects_data = {
+            'total': projects.count(),
+            'in_progress': projects.filter(status='in_progress').count(),
+            'completed': projects.filter(status='completed').count(),
+            'over_due': projects.filter(end_date__lt=timezone.now().date(), status__in=['in_progress', 'planning']).count()
+        }
+        
+        # Get financial data
+        total_revenue = sum([inv.amount for inv in Invoice.objects.filter(status='paid')])
+        total_cost = sum([exp.amount for exp in Expense.objects.all()])
+        planned_revenue = sum([inv.amount for inv in Invoice.objects.all()])
+        
+        financial_data = {
+            'total_revenue': float(total_revenue),
+            'total_cost': float(total_cost),
+            'planned_revenue': float(planned_revenue),
+            'current_month_revenue': float(sum([inv.amount for inv in Invoice.objects.filter(
+                status='paid',
+                created_at__month=timezone.now().month,
+                created_at__year=timezone.now().year
+            )]))
+        }
+        
+        # Get workload data
+        employees = Employee.objects.filter(is_active=True)
+        employee_task_counts = {}
+        for emp in employees:
+            employee_task_counts[emp.id] = Task.objects.filter(assigned_to=emp).count()
+        
+        healthy = sum(1 for count in employee_task_counts.values() if 5 <= count <= 15)
+        underutilised = sum(1 for count in employee_task_counts.values() if count < 5)
+        overutilised = sum(1 for count in employee_task_counts.values() if count > 15)
+        total = healthy + underutilised + overutilised
+        
+        workload_data = {
+            'healthy': round((healthy / total * 100) if total > 0 else 0),
+            'underutilised': round((underutilised / total * 100) if total > 0 else 0),
+            'overutilised': round((overutilised / total * 100) if total > 0 else 0)
+        }
+        
+        # Generate insights
+        insights = DashboardAIService.generate_dashboard_insights(
+            projects_data, financial_data, workload_data
         )
+        
+        return Response({
+            'insights': insights,
+            'generated_at': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error generating insights: {str(e)}',
+            'insights': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_revenue_forecast(request):
+    """Get revenue forecast for next N months"""
+    try:
+        from invoices.models import Invoice
+        
+        months = int(request.GET.get('months', 3))
+        current_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(status='paid')]))
+        
+        forecast = DashboardAIService.predict_revenue_forecast(current_revenue, months)
+        
+        return Response(forecast, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error generating forecast: {str(e)}',
+            'forecast': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_project_health_scores(request):
+    """Get health scores for all projects"""
+    try:
+        from projects.models import Project
+        from tasks.models import Task
+        
+        projects = Project.objects.all()
+        health_scores = []
+        
+        for project in projects:
+            # Get project tasks
+            tasks = Task.objects.filter(project=project)
+            total_tasks = tasks.count()
+            completed_tasks = tasks.filter(status='completed').count()
+            
+            # Calculate spent (simplified - use actual expense tracking in production)
+            from finance.models import Expense
+            # Expense model doesn't have project field
+            spent = 0.0  # float(sum([exp.amount for exp in Expense.objects.filter(project=project)]))
+            
+            project_data = {
+                'id': project.id,
+                'title': project.title,
+                'end_date': project.end_date,
+                'start_date': project.start_date,
+                'budget': float(project.budget),
+                'spent': spent,
+                'progress': int((completed_tasks / total_tasks * 100) if total_tasks > 0 else 0),
+                'total_tasks': total_tasks,
+                'completed_tasks': completed_tasks,
+                'status': project.status,
+                'team_workload': 0.5  # Simplified - calculate actual workload
+            }
+            
+            health = DashboardAIService.calculate_project_health_score(project_data)
+            health_scores.append({
+                'project_id': project.id,
+                'project_name': project.title,
+                **health
+            })
+        
+        return Response({
+            'health_scores': sorted(health_scores, key=lambda x: x['score']),
+            'average_score': sum([h['score'] for h in health_scores]) / len(health_scores) if health_scores else 0
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error calculating health scores: {str(e)}',
+            'health_scores': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_anomaly_detection(request):
+    """Detect anomalies in projects and financial data"""
+    try:
+        from projects.models import Project
+        from finance.models import Expense
+        from invoices.models import Invoice
+        
+        # Get projects with budget data
+        projects = []
+        for project in Project.objects.all():
+            # Expense model doesn't have project field
+            spent = 0.0  # float(sum([exp.amount for exp in Expense.objects.filter(project=project)]))
+            projects.append({
+                'id': project.id,
+                'title': project.title,
+                'budget': float(project.budget),
+                'spent': spent,
+                'end_date': project.end_date,
+                'status': project.status
+            })
+        
+        # Get financial data
+        total_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(status='paid')]))
+        current_month_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(
+            status='paid',
+            created_at__month=timezone.now().month,
+            created_at__year=timezone.now().year
+        )]))
+        
+        financial_data = {
+            'total_revenue': total_revenue,
+            'current_month_revenue': current_month_revenue
+        }
+        
+        anomalies = DashboardAIService.detect_anomalies(projects, financial_data)
+        
+        return Response({
+            'anomalies': anomalies,
+            'count': len(anomalies)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error detecting anomalies: {str(e)}',
+            'anomalies': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_smart_recommendations(request):
+    """Get smart recommendations for resource allocation and optimization"""
+    try:
+        from projects.models import Project
+        from tasks.models import Task
+        from finance.models import Expense
+        from invoices.models import Invoice
+        
+        # Get projects with health scores
+        projects = []
+        for project in Project.objects.all():
+            tasks = Task.objects.filter(project=project)
+            total_tasks = tasks.count()
+            completed_tasks = tasks.filter(status='completed').count()
+            
+            # Expense model doesn't have project field
+            spent = 0.0  # float(sum([exp.amount for exp in Expense.objects.filter(project=project)]))
+            
+            health = DashboardAIService.calculate_project_health_score({
+                'id': project.id,
+                'title': project.title,
+                'end_date': project.end_date,
+                'start_date': project.start_date,
+                'budget': float(project.budget),
+                'spent': spent,
+                'progress': int((completed_tasks / total_tasks * 100) if total_tasks > 0 else 0),
+                'total_tasks': total_tasks,
+                'completed_tasks': completed_tasks,
+                'team_workload': 0.5
+            })
+            projects.append({
+                'id': project.id,
+                'title': project.title,
+                'health_score': health.get('score', 50)
+            })
+        
+        # Get employees with task counts
+        employees = []
+        for emp in Employee.objects.filter(is_active=True):
+            task_count = Task.objects.filter(assigned_to=emp).count()
+            employees.append({
+                'id': emp.id,
+                'name': emp.name,
+                'task_count': task_count,
+                'department': emp.department.title if emp.department else None,
+                'designation': emp.designation.title if emp.designation else None
+            })
+        
+        # Get financial data
+        total_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(status='paid')]))
+        total_cost = float(sum([exp.amount for exp in Expense.objects.all()]))
+        
+        financial_data = {
+            'total_revenue': total_revenue,
+            'total_cost': total_cost
+        }
+        
+        recommendations = DashboardAIService.generate_smart_recommendations(
+            projects, employees, financial_data
+        )
+        
+        return Response({
+            'recommendations': recommendations,
+            'count': len(recommendations)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error generating recommendations: {str(e)}',
+            'recommendations': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_risk_assessment(request):
+    """Get risk assessment for projects and employees"""
+    try:
+        from projects.models import Project
+        from tasks.models import Task
+        from finance.models import Expense
+        
+        # Get projects with health data
+        projects = []
+        for project in Project.objects.all():
+            tasks = Task.objects.filter(project=project)
+            total_tasks = tasks.count()
+            completed_tasks = tasks.filter(status='completed').count()
+            
+            # Expense model doesn't have project field, so we'll use 0 for now
+            # In production, link expenses to projects or use a different calculation
+            spent = 0.0  # float(sum([exp.amount for exp in Expense.objects.filter(project=project)]))
+            
+            # Get assigned team members for this project
+            # Get unique employees assigned to tasks in this project
+            assigned_employees = []
+            assigned_employee_ids = set()
+            try:
+                for task in tasks.filter(assigned_to__isnull=False):
+                    if task.assigned_to and task.assigned_to.id not in assigned_employee_ids:
+                        assigned_employee_ids.add(task.assigned_to.id)
+                        try:
+                            assigned_employees.append({
+                                'id': task.assigned_to.id,
+                                'name': task.assigned_to.name or 'Unknown',
+                                'email': task.assigned_to.user.email if task.assigned_to.user else None,
+                                'designation': task.assigned_to.designation if task.assigned_to.designation else None,
+                                'department': task.assigned_to.department if task.assigned_to.department else None,
+                            })
+                        except Exception as e:
+                            # Skip this employee if there's an error accessing their data
+                            continue
+            except Exception as e:
+                # If there's an error, just continue with empty list
+                assigned_employees = []
+            
+            # Prepare full project data for risk calculation
+            project_data = {
+                'id': project.id,
+                'title': project.title,
+                'end_date': project.end_date,
+                'start_date': project.start_date,
+                'budget': float(project.budget),
+                'spent': spent,
+                'progress': int((completed_tasks / total_tasks * 100) if total_tasks > 0 else 0),
+                'total_tasks': total_tasks,
+                'completed_tasks': completed_tasks,
+                'team_workload': 0.5,
+                'status': project.status,
+                'assigned_team_members': assigned_employees,
+            }
+            
+            projects.append(project_data)
+        
+        # Get employees with task counts
+        employees = []
+        for emp in Employee.objects.filter(is_active=True):
+            task_count = Task.objects.filter(assigned_to=emp).count()
+            # Calculate tenure
+            if emp.joining_date:
+                tenure_days = (timezone.now().date() - emp.joining_date).days
+            else:
+                tenure_days = 0
+            
+            employees.append({
+                'id': emp.id,
+                'name': emp.name,
+                'task_count': task_count,
+                'department': emp.department.title if emp.department else None,
+                'designation': emp.designation.title if emp.designation else None,
+                'is_active': emp.is_active,
+                'tenure_days': tenure_days
+            })
+        
+        risk_scores = DashboardAIService.calculate_risk_scores(projects, employees)
+        
+        return Response(risk_scores, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error calculating risk scores: {str(e)}',
+            'project_risks': [],
+            'employee_risks': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_trend_predictions(request):
+    """Get trend predictions for revenue, projects, and costs"""
+    try:
+        from invoices.models import Invoice
+        from finance.models import Expense
+        from projects.models import Project
+        
+        months = int(request.GET.get('months', 6))
+        
+        # Get financial data (last 12 months)
+        financial_data = []
+        for i in range(12):
+            month_date = timezone.now() - timedelta(days=30 * i)
+            month_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(
+                status='paid',
+                created_at__month=month_date.month,
+                created_at__year=month_date.year
+            )]))
+            month_cost = float(sum([exp.amount for exp in Expense.objects.filter(
+                date__month=month_date.month,
+                date__year=month_date.year
+            )]))
+            financial_data.append({
+                'revenue': month_revenue,
+                'cost': month_cost
+            })
+        
+        # Get project data
+        project_data = []
+        for project in Project.objects.all():
+            project_data.append({
+                'id': project.id,
+                'title': project.title,
+                'status': project.status
+            })
+        
+        predictions = DashboardAIService.generate_trend_predictions(
+            financial_data, project_data, months
+        )
+        
+        return Response(predictions, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error generating predictions: {str(e)}',
+            'revenue_trend': {'forecast': []},
+            'project_completions': [],
+            'cost_trend': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_performance_benchmark(request):
+    """Get performance benchmarks comparing current vs historical"""
+    try:
+        from invoices.models import Invoice
+        from projects.models import Project
+        
+        # Get current data
+        current_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(status='paid')]))
+        current_completed = Project.objects.filter(status='completed').count()
+        
+        # Get historical data (last 6 months)
+        historical_data = []
+        for i in range(6):
+            month_date = timezone.now() - timedelta(days=30 * i)
+            month_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(
+                status='paid',
+                created_at__month=month_date.month,
+                created_at__year=month_date.year
+            )]))
+            month_completed = Project.objects.filter(
+                status='completed',
+                end_date__month=month_date.month,
+                end_date__year=month_date.year
+            ).count()
+            historical_data.append({
+                'revenue': month_revenue,
+                'completed_projects': month_completed
+            })
+        
+        current_data = {
+            'revenue': current_revenue,
+            'completed_projects': current_completed
+        }
+        
+        benchmarks = DashboardAIService.benchmark_performance(current_data, historical_data)
+        
+        return Response(benchmarks, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error calculating benchmarks: {str(e)}',
+            'revenue': {},
+            'project_completion': {}
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dashboard_natural_language_query(request):
+    """Process natural language queries for dashboard"""
+    try:
+        from invoices.models import Invoice
+        from projects.models import Project
+        from tasks.models import Task
+        
+        query = request.data.get('query', '')
+        if not query:
+            return Response({
+                'error': 'Query is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Prepare available data
+        current_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(status='paid')]))
+        
+        projects = []
+        for project in Project.objects.all():
+            tasks = Task.objects.filter(project=project)
+            health = DashboardAIService.calculate_project_health_score({
+                'id': project.id,
+                'title': project.title,
+                'end_date': project.end_date,
+                'budget': float(project.budget),
+                'spent': 0,
+                'progress': 0,
+                'total_tasks': tasks.count(),
+                'completed_tasks': tasks.filter(status='completed').count(),
+                'team_workload': 0.5
+            })
+            projects.append({
+                'id': project.id,
+                'title': project.title,
+                'status': project.status,
+                'health_score': health.get('score', 50)
+            })
+        
+        # Get workload data
+        employees = Employee.objects.filter(is_active=True)
+        employee_task_counts = {}
+        for emp in employees:
+            employee_task_counts[emp.id] = Task.objects.filter(assigned_to=emp).count()
+        
+        healthy = sum(1 for count in employee_task_counts.values() if 5 <= count <= 15)
+        underutilised = sum(1 for count in employee_task_counts.values() if count < 5)
+        overutilised = sum(1 for count in employee_task_counts.values() if count > 15)
+        total = healthy + underutilised + overutilised
+        
+        workload_data = {
+            'healthy': round((healthy / total * 100) if total > 0 else 0),
+            'underutilised': round((underutilised / total * 100) if total > 0 else 0),
+            'overutilised': round((overutilised / total * 100) if total > 0 else 0)
+        }
+        
+        available_data = {
+            'current_revenue': current_revenue,
+            'projects': projects,
+            'workload': workload_data
+        }
+        
+        result = DashboardAIService.process_natural_language_query(query, available_data)
+        
+        return Response(result, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error processing query: {str(e)}',
+            'query': query,
+            'intent': 'error',
+            'message': 'Unable to process query'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

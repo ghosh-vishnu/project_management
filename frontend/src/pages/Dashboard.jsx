@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import BASE_API_URL from "../data";
 import { motion, AnimatePresence } from "framer-motion";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Legend } from "recharts";
 import { getToken } from "../Token";
 import { useNavigate } from "react-router";
 
@@ -25,6 +25,93 @@ const Dashboard = () => {
   const [hoveredCard, setHoveredCard] = useState(null);
   const [hoveredChart, setHoveredChart] = useState(null);
   const [selectedBar, setSelectedBar] = useState(null);
+  
+  // AI Features State
+  const [aiInsights, setAiInsights] = useState([]);
+  const [revenueForecast, setRevenueForecast] = useState(null);
+  const [projectHealthScores, setProjectHealthScores] = useState([]);
+  const [anomalies, setAnomalies] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+  const [riskScores, setRiskScores] = useState({ project_risks: [], employee_risks: [] });
+  const [trendPredictions, setTrendPredictions] = useState(null);
+  const [benchmarks, setBenchmarks] = useState({});
+  const [nlQuery, setNlQuery] = useState('');
+  const [nlResponse, setNlResponse] = useState(null);
+  const [showNLQuery, setShowNLQuery] = useState(false);
+  const [loadingAI, setLoadingAI] = useState(false);
+
+  // Fetch all AI data
+  const fetchAIData = async () => {
+    try {
+      setLoadingAI(true);
+      const accessToken = getToken("accessToken");
+      if (!accessToken) return;
+      
+      const headers = { Authorization: `Bearer ${accessToken}` };
+      
+      // Fetch all AI features in parallel
+      const [
+        insightsRes,
+        forecastRes,
+        healthRes,
+        anomaliesRes,
+        recommendationsRes,
+        riskRes,
+        trendsRes,
+        benchmarkRes
+      ] = await Promise.allSettled([
+        axios.get(`${BASE_API_URL}/peoples/dashboard/ai/insights-comprehensive/`, { headers }),
+        axios.get(`${BASE_API_URL}/peoples/dashboard/ai/revenue-forecast/`, { headers }),
+        axios.get(`${BASE_API_URL}/peoples/dashboard/ai/project-health-scores/`, { headers }),
+        axios.get(`${BASE_API_URL}/peoples/dashboard/ai/anomaly-detection/`, { headers }),
+        axios.get(`${BASE_API_URL}/peoples/dashboard/ai/smart-recommendations/`, { headers }),
+        axios.get(`${BASE_API_URL}/peoples/dashboard/ai/risk-assessment/`, { headers }),
+        axios.get(`${BASE_API_URL}/peoples/dashboard/ai/trend-predictions/?months=6`, { headers }),
+        axios.get(`${BASE_API_URL}/peoples/dashboard/ai/performance-benchmark/`, { headers })
+      ]);
+      
+      if (insightsRes.status === 'fulfilled') setAiInsights(insightsRes.value.data.insights || []);
+      if (forecastRes.status === 'fulfilled') setRevenueForecast(forecastRes.value.data);
+      if (healthRes.status === 'fulfilled') setProjectHealthScores(healthRes.value.data.health_scores || []);
+      if (anomaliesRes.status === 'fulfilled') setAnomalies(anomaliesRes.value.data.anomalies || []);
+      if (recommendationsRes.status === 'fulfilled') setRecommendations(recommendationsRes.value.data.recommendations || []);
+      if (riskRes.status === 'fulfilled') {
+        setRiskScores(riskRes.value.data || { project_risks: [], employee_risks: [] });
+      }
+      if (trendsRes.status === 'fulfilled') setTrendPredictions(trendsRes.value.data);
+      if (benchmarkRes.status === 'fulfilled') setBenchmarks(benchmarkRes.value.data);
+      
+    } catch (error) {
+      console.error("Error fetching AI data:", error);
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
+  // Handle natural language query
+  const handleNLQuery = async () => {
+    if (!nlQuery.trim()) return;
+    
+    try {
+      setLoadingAI(true);
+      const accessToken = getToken("accessToken");
+      const response = await axios.post(
+        `${BASE_API_URL}/peoples/dashboard/ai/natural-language-query/`,
+        { query: nlQuery },
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      setNlResponse(response.data);
+      setNlQuery('');
+    } catch (error) {
+      console.error("Error processing NL query:", error);
+      setNlResponse({
+        message: 'Unable to process query. Please try again.',
+        intent: 'error'
+      });
+    } finally {
+      setLoadingAI(false);
+    }
+  };
 
   useEffect(() => {
     const fetchKanbanData = async () => {
@@ -62,11 +149,14 @@ const Dashboard = () => {
       }
     };
 
+    // Initial fetch
     fetchKanbanData();
+    fetchAIData();
     
     // Auto-refresh data every 30 seconds for real-time updates
     const interval = setInterval(() => {
       fetchKanbanData();
+      fetchAIData();
     }, 30000);
     
     return () => clearInterval(interval);
@@ -869,6 +959,512 @@ const Dashboard = () => {
           ) : (
             <div className="flex items-center justify-center h-64 text-gray-500">
               No project manager data available
+            </div>
+          )}
+        </motion.div>
+
+        {/* AI-Powered Insights Card */}
+        {aiInsights.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.8 }}
+            className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-lg p-6 shadow-lg text-white"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <span>AI Insights & Recommendations</span> 
+              </h3>
+              <button
+                onClick={() => fetchAIData()}
+                className="text-sm px-3 py-1 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+                disabled={loadingAI}
+              >
+                {loadingAI ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {loadingAI && aiInsights.length === 0 ? (
+                <div className="text-center py-4 text-white/70">Loading insights...</div>
+              ) : aiInsights.length === 0 ? (
+                <div className="text-center py-4 text-white/70">No insights available at this time.</div>
+              ) : (
+                aiInsights.map((insight, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg bg-white/10 backdrop-blur-sm border-l-4 ${
+                    insight.type === 'error' ? 'border-red-400' :
+                    insight.type === 'warning' ? 'border-yellow-400' :
+                    'border-blue-400'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-gray-200 mb-1">{insight.category}</div>
+                      <div className="font-semibold mb-1">{insight.title}</div>
+                      <div className="text-sm text-gray-100">{insight.message}</div>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      insight.priority === 'high' ? 'bg-red-500/50' :
+                      insight.priority === 'medium' ? 'bg-yellow-500/50' :
+                      'bg-blue-500/50'
+                    }`}>
+                      {insight.priority}
+                    </span>
+                  </div>
+                </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Revenue Forecast Chart */}
+        {revenueForecast && revenueForecast.forecast && revenueForecast.forecast.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.9 }}
+            className="bg-white rounded-lg p-6 shadow-md"
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Revenue Forecast (Next 3 Months)</h3>
+            {loadingAI && !revenueForecast ? (
+              <div className="flex items-center justify-center h-[250px] text-gray-500">Loading forecast...</div>
+            ) : revenueForecast && revenueForecast.forecast && revenueForecast.forecast.length > 0 ? (
+              <>
+              <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={revenueForecast.forecast}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="month" stroke="#6b7280" />
+                <YAxis stroke="#6b7280" />
+                <RechartsTooltip formatter={(value) => formatCurrency(value)} />
+                <Area type="monotone" dataKey="predicted_revenue" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
+              </AreaChart>
+            </ResponsiveContainer>
+            <div className="mt-4 text-sm text-gray-600">
+              <div>Total Forecast: <span className="font-semibold">{formatCurrency(revenueForecast.total_forecast)}</span></div>
+              <div>Growth Rate: <span className="font-semibold">{revenueForecast.growth_rate}%</span></div>
+              <div>Avg Confidence: <span className="font-semibold">{revenueForecast.confidence_avg?.toFixed(0)}%</span></div>
+            </div>
+            </>
+            ) : (
+              <div className="flex items-center justify-center h-[250px] text-gray-500">No forecast data available</div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Project Health Scores */}
+        {projectHealthScores.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 1.0 }}
+            className="bg-white rounded-lg p-6 shadow-md"
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Project Health Scores</h3>
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {loadingAI && projectHealthScores.length === 0 ? (
+                <div className="text-center py-4 text-gray-500">Loading health scores...</div>
+              ) : projectHealthScores.length === 0 ? (
+                <div className="text-center py-4 text-gray-500">No project health data available</div>
+              ) : (
+                projectHealthScores.slice(0, 5).map((health, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-800">{health.project_name}</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {health.factors.length > 0 && `Factors: ${health.factors.join(', ')}`}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <div className={`text-2xl font-bold ${
+                        health.color === 'green' ? 'text-green-600' :
+                        health.color === 'yellow' ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {health.score}
+                      </div>
+                      <div className="text-xs text-gray-600">{health.status}</div>
+                    </div>
+                    <div className={`w-3 h-3 rounded-full ${
+                      health.color === 'green' ? 'bg-green-500' :
+                      health.color === 'yellow' ? 'bg-yellow-500' :
+                      'bg-red-500'
+                    }`} />
+                  </div>
+                </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Anomaly Detection */}
+        {(loadingAI || anomalies.length > 0) && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 1.1 }}
+            className="bg-white rounded-lg p-6 shadow-md border-l-4 border-red-500"
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <span>Anomaly Detection Alerts</span> 
+            </h3>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {loadingAI && anomalies.length === 0 ? (
+                <div className="text-center py-4 text-gray-500">Checking for anomalies...</div>
+              ) : anomalies.length === 0 ? (
+                <div className="text-center py-4 text-green-600 font-semibold">✓ No anomalies detected</div>
+              ) : (
+                anomalies.slice(0, 5).map((anomaly, idx) => (
+                <div key={idx} className="p-2 bg-red-50 rounded border border-red-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-red-800 text-sm">{anomaly.project}</div>
+                      <div className="text-xs text-red-600">{anomaly.message}</div>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      anomaly.severity === 'high' ? 'bg-red-500 text-white' :
+                      'bg-yellow-500 text-white'
+                    }`}>
+                      {anomaly.severity}
+                    </span>
+                  </div>
+                </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Smart Recommendations */}
+        {(loadingAI || recommendations.length > 0) && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 1.2 }}
+            className="bg-white rounded-lg p-6 shadow-md border-l-4 border-blue-500"
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <span>Smart Recommendations</span>
+            </h3>
+            <div className="space-y-3">
+              {loadingAI && recommendations.length === 0 ? (
+                <div className="text-center py-4 text-gray-500">Generating recommendations...</div>
+              ) : recommendations.length === 0 ? (
+                <div className="text-center py-4 text-gray-500">No recommendations at this time</div>
+              ) : (
+                recommendations.map((rec, idx) => (
+                <div key={idx} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="font-semibold text-blue-800 mb-1">{rec.title}</div>
+                      <div className="text-sm text-blue-700">{rec.message}</div>
+                      {rec.projects && rec.projects.length > 0 && (
+                        <div className="text-xs text-blue-600 mt-2">
+                          Projects: {rec.projects.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      rec.priority === 'high' ? 'bg-red-500 text-white' :
+                      'bg-yellow-500 text-white'
+                    }`}>
+                      {rec.priority}
+                    </span>
+                  </div>
+                </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Risk Assessment */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 1.3 }}
+          className="bg-white rounded-lg p-6 shadow-md"
+        >
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Risk Assessment</h3>
+          {loadingAI && (!riskScores.project_risks?.length && !riskScores.employee_risks?.length) ? (
+            <div className="text-center py-4 text-gray-500">Analyzing risks...</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Project Risks */}
+              {riskScores.project_risks && riskScores.project_risks.length > 0 ? (
+                <div>
+                  <h4 className="font-semibold text-gray-700 mb-2">Project Risks</h4>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {riskScores.project_risks.slice(0, 5).map((risk, idx) => (
+                      <div key={idx} className="p-2 bg-gray-50 rounded">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium">{risk.project_name}</div>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            risk.risk_level === 'high' ? 'bg-red-500 text-white' :
+                            risk.risk_level === 'medium' ? 'bg-yellow-500 text-white' :
+                            'bg-green-500 text-white'
+                          }`}>
+                            {risk.risk_score}
+                          </span>
+                        </div>
+                        {risk.factors && risk.factors.length > 0 && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Factors: {risk.factors.join(', ')}
+                          </div>
+                        )}
+                        {/* Team Members Section */}
+                        {risk.assigned_team_members !== undefined && (
+                          <div className="mt-2">
+                            {Array.isArray(risk.assigned_team_members) && risk.assigned_team_members.length > 0 ? (
+                              <>
+                                <div className="text-xs font-semibold text-gray-600 mb-1">
+                                  Assigned Team Members ({risk.assigned_team_members.length}):
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {risk.assigned_team_members.slice(0, 5).map((member, memberIdx) => (
+                                    <span
+                                      key={memberIdx}
+                                      className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full"
+                                      title={`${member.name || 'Unknown'}${member.designation ? ` - ${member.designation}` : ''}${member.department ? ` (${member.department})` : ''}`}
+                                    >
+                                      {member.name || 'Unknown'}
+                                    </span>
+                                  ))}
+                                  {risk.assigned_team_members.length > 5 && (
+                                    <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-600 rounded-full">
+                                      +{risk.assigned_team_members.length - 5} more
+                                    </span>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-xs text-gray-400 italic">
+                                No team members assigned to this project
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-gray-500">No project risks detected</div>
+              )}
+              
+              {/* Employee Risks */}
+              {riskScores.employee_risks && riskScores.employee_risks.length > 0 ? (
+                <div>
+                  <h4 className="font-semibold text-gray-700 mb-2">Employee Churn Risks</h4>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {riskScores.employee_risks
+                      .sort((a, b) => b.risk_score - a.risk_score) // Sort by risk score descending
+                      .slice(0, 5)
+                      .map((risk, idx) => (
+                      <div key={idx} className="p-2 bg-gray-50 rounded">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">{risk.employee_name}</div>
+                            {risk.factors && risk.factors.length > 0 && risk.factors[0] !== 'No risks detected' && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                {risk.factors.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            risk.risk_level === 'high' ? 'bg-red-500 text-white' :
+                            risk.risk_level === 'medium' ? 'bg-yellow-500 text-white' :
+                            'bg-green-500 text-white'
+                          }`}>
+                            {risk.risk_score}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-gray-500">No employee risks detected</div>
+              )}
+            </div>
+          )}
+          </motion.div>
+
+        {/* Trend Predictions */}
+        {(loadingAI || trendPredictions) && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 1.4 }}
+            className="bg-white rounded-lg p-6 shadow-md"
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Trend Predictions (6 Months)</h3>
+            {loadingAI && !trendPredictions ? (
+              <div className="text-center py-4 text-gray-500">Generating predictions...</div>
+            ) : trendPredictions ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Revenue Trend */}
+              {trendPredictions.revenue_trend?.forecast?.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-gray-700 mb-2">Revenue Trend</h4>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={trendPredictions.revenue_trend.forecast}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <RechartsTooltip formatter={(value) => formatCurrency(value)} />
+                      <Line type="monotone" dataKey="predicted_revenue" stroke="#3b82f6" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              
+              {/* Cost Trend */}
+              {trendPredictions.cost_trend?.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-gray-700 mb-2">Cost Trend</h4>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={trendPredictions.cost_trend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <RechartsTooltip formatter={(value) => formatCurrency(value)} />
+                      <Line type="monotone" dataKey="predicted_cost" stroke="#ef4444" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+            ) : (
+              <div className="text-center py-4 text-gray-500">No trend data available</div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Performance Benchmarking */}
+        {(loadingAI || Object.keys(benchmarks).length > 0) && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 1.5 }}
+            className="bg-white rounded-lg p-6 shadow-md"
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Performance Benchmarking</h3>
+            {loadingAI && Object.keys(benchmarks).length === 0 ? (
+              <div className="text-center py-4 text-gray-500">Calculating benchmarks...</div>
+            ) : Object.keys(benchmarks).length === 0 ? (
+              <div className="text-center py-4 text-gray-500">No benchmark data available</div>
+            ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {benchmarks.revenue && (
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-semibold text-gray-700 mb-2">Revenue</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm">Current:</span>
+                      <span className="font-semibold">{formatCurrency(benchmarks.revenue.current)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Historical Avg:</span>
+                      <span className="font-semibold">{formatCurrency(benchmarks.revenue.historical_avg)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Change:</span>
+                      <span className={`font-semibold ${
+                        benchmarks.revenue.change_percent > 0 ? 'text-green-600' :
+                        benchmarks.revenue.change_percent < 0 ? 'text-red-600' :
+                        'text-gray-600'
+                      }`}>
+                        {benchmarks.revenue.change_percent > 0 ? '+' : ''}{benchmarks.revenue.change_percent}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {benchmarks.project_completion && (
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-semibold text-gray-700 mb-2">Project Completion</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm">Current:</span>
+                      <span className="font-semibold">{benchmarks.project_completion.current}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Historical Avg:</span>
+                      <span className="font-semibold">{benchmarks.project_completion.historical_avg?.toFixed(1)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Change:</span>
+                      <span className={`font-semibold ${
+                        benchmarks.project_completion.change_percent > 0 ? 'text-green-600' :
+                        benchmarks.project_completion.change_percent < 0 ? 'text-red-600' :
+                        'text-gray-600'
+                      }`}>
+                        {benchmarks.project_completion.change_percent > 0 ? '+' : ''}{benchmarks.project_completion.change_percent}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Natural Language Query */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 1.6 }}
+          className="bg-white rounded-lg p-6 shadow-md"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <span>💬</span> Ask Dashboard
+            </h3>
+            <button
+              onClick={() => setShowNLQuery(!showNLQuery)}
+              className="text-sm px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              {showNLQuery ? 'Hide' : 'Ask Question'}
+            </button>
+          </div>
+          
+          {showNLQuery && (
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={nlQuery}
+                  onChange={(e) => setNlQuery(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleNLQuery()}
+                  placeholder="Ask anything... e.g., 'Show me projects at risk', 'What's the revenue forecast?'"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={handleNLQuery}
+                  disabled={loadingAI || !nlQuery.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+                >
+                  {loadingAI ? 'Processing...' : 'Ask'}
+                </button>
+              </div>
+              
+              {nlResponse && (
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="font-semibold text-blue-800 mb-2">Response:</div>
+                  <div className="text-sm text-blue-700">{nlResponse.message}</div>
+                  {nlResponse.data && Object.keys(nlResponse.data).length > 0 && (
+                    <div className="mt-2 text-xs text-blue-600">
+                      {JSON.stringify(nlResponse.data, null, 2)}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </motion.div>
