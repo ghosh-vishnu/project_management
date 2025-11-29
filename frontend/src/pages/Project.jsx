@@ -63,7 +63,7 @@ const SelectEmployeeName = React.forwardRef(
         {options &&
           options.map((option, index) => (
             <option key={option.id} value={option.id}>
-              {option.name}
+              {option.name} {option.email ? `(${option.email})` : ''}
             </option>
           ))}
       </select>

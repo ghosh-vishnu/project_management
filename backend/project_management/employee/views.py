@@ -41,9 +41,11 @@ def employee_names_list(request):
         data = []
         for emp in employees:
             try:
+                email = emp.user.email if emp.user and hasattr(emp.user, 'email') else ''
                 data.append({
                     'id': getattr(emp, 'id', None),
                     'name': getattr(emp, 'name', '') or '',
+                    'email': email,
                     'designation': getattr(emp, 'designation', '') or ''
                 })
             except Exception as row_error:
@@ -51,6 +53,7 @@ def employee_names_list(request):
                 data.append({
                     'id': getattr(emp, 'id', None),
                     'name': '',
+                    'email': '',
                     'designation': ''
                 })
         return Response(data, status=status.HTTP_200_OK)
@@ -772,11 +775,15 @@ def dashboard_kanban_data(request):
             overutilised_percent = 2
         
         # Project by Project Manager
+        # Group by email (unique identifier) but display name
         project_managers = {}
         for project in projects:
             if project.assigned_to:
-                # Get proper name - prefer Employee model name, then User full name, then first name, then formatted username
                 user = project.assigned_to
+                # Use email as unique key for counting
+                user_email = user.email if user.email else user.username
+                
+                # Get proper name for display - prefer Employee model name, then User full name, then first name, then formatted username
                 pm_name = None
                 
                 # First priority: Check if user has Employee profile with name
@@ -806,13 +813,25 @@ def dashboard_kanban_data(request):
                         # Format username by replacing dots and underscores with spaces
                         pm_name = username.replace('.', ' ').replace('_', ' ').title()
                 
-                # Use the formatted name
-                if pm_name:
-                    project_managers[pm_name] = project_managers.get(pm_name, 0) + 1
+                # Use email as key for counting (unique identifier)
+                # Store name for display (will use the first/latest name found)
+                if user_email:
+                    if user_email not in project_managers:
+                        project_managers[user_email] = {
+                            'name': pm_name or user_email,
+                            'count': 0
+                        }
+                    # Increment count for this email
+                    project_managers[user_email]['count'] += 1
         
-        # Sort and get top 5
-        sorted_managers = sorted(project_managers.items(), key=lambda x: x[1], reverse=True)[:5]
-        manager_data = [{'name': name, 'count': count} for name, count in sorted_managers]
+        # Convert to list format and sort by count
+        manager_data = [
+            {'name': data['name'], 'count': data['count']} 
+            for email, data in project_managers.items()
+        ]
+        # Sort by count descending and get top 5
+        sorted_managers = sorted(manager_data, key=lambda x: x['count'], reverse=True)[:5]
+        manager_data = sorted_managers
         
         # Financial data - Calculate from actual Income, Expense, and Invoice models
         try:
