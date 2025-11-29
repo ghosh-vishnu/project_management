@@ -5,7 +5,7 @@ import CloseBtn from "../../components/Buttons/CloseBtn";
 import PrimaryBtn from "../../components/Buttons/PrimaryBtn";
 import { Link, useParams } from "react-router";
 import FileUploadInput from "../../components/Form/FileUploadInput";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import {
   AADHAR_REGEX,
   EMAIL_REGEX,
@@ -180,43 +180,50 @@ const SelectStatus = React.forwardRef(({ onChange, onBlur, name }, ref) => (
 ));
 
 // Select Dropdown for Country
-const SelectCountry = React.forwardRef(
-  ({ onChange, onBlur, name, countries = [] }, ref) => (
-    <>
-      <label>
-        Country <span className="text-red-600">*</span>{" "}
-      </label>
-      <select name={name} ref={ref} onChange={onChange} onBlur={onBlur}>
-        <option value="">Select Country</option>
-        {countries &&
-          countries.map((country) => (
-            <option key={country} value={country}>
-              {country}
-            </option>
-          ))}
-      </select>
-    </>
-  )
+const SelectCountry = ({ countries = [], value, onChange, onBlur, name }) => (
+  <>
+    <label>
+      Country <span className="text-red-600">*</span>{" "}
+    </label>
+    <select 
+      name={name} 
+      value={value || ""} 
+      onChange={onChange} 
+      onBlur={onBlur}
+    >
+      <option value="">{countries.length > 0 ? "Select Country" : "Loading countries..."}</option>
+      {countries && countries.length > 0 && countries.map((country) => (
+        <option key={country} value={country}>
+          {country}
+        </option>
+      ))}
+    </select>
+  </>
 );
 
 // Select Dropdown for States
-const SelectState = React.forwardRef(
-  ({ onChange, onBlur, name, states }, ref) => (
-    <>
-      <label>
-        State <span className="text-red-600">*</span>{" "}
-      </label>
-      <select name={name} ref={ref} onChange={onChange} onBlur={onBlur}>
-        <option value="">Select State</option>
-        {states &&
-          states.map((state) => (
-            <option key={state} value={state}>
-              {state}
-            </option>
-          ))}
-      </select>
-    </>
-  )
+const SelectState = ({ states = [], value, onChange, onBlur, name }) => (
+  <>
+    <label>
+      State <span className="text-red-600">*</span>{" "}
+    </label>
+    <select 
+      name={name} 
+      value={value || ""} 
+      onChange={onChange} 
+      onBlur={onBlur}
+      disabled={!states || states.length === 0}
+    >
+      <option value="">
+        {states && states.length > 0 ? "Select State" : "Select Country first"}
+      </option>
+      {states && states.length > 0 && states.map((state) => (
+        <option key={state} value={state}>
+          {state}
+        </option>
+      ))}
+    </select>
+  </>
 );
 
 const EditEmployee = () => {
@@ -227,6 +234,7 @@ const EditEmployee = () => {
     getValues,
     watch,
     setValue,
+    control,
     formState: { errors, isSubmitting },
   } = useForm({
     mode: "onChange",
@@ -350,10 +358,17 @@ const EditEmployee = () => {
         const res = await axios.get(
           "https://countriesnow.space/api/v0.1/countries"
         );
-        const countryList = res.data.data.map((c) => c.country).sort();
-        setCountries(countryList);
+        if (res.data && res.data.data && Array.isArray(res.data.data)) {
+          const countryList = res.data.data.map((c) => c.country).filter(Boolean).sort();
+          setCountries(countryList);
+          console.log("Countries loaded:", countryList.length);
+        } else {
+          console.error("Invalid countries API response:", res.data);
+          setCountries([]);
+        }
       } catch (error) {
         console.error("Error fetching countries", error);
+        setCountries([]);
       }
     };
     // Function to fetch the data of countries
@@ -366,6 +381,7 @@ const EditEmployee = () => {
   useEffect(() => {
     const fetchCurrentStates = async (country) => {
       if (!country) {
+        setCurrentStates([]);
         return;
       }
 
@@ -381,7 +397,7 @@ const EditEmployee = () => {
         const stateNames = stateList.map((s) => s.name);
         setCurrentStates(stateNames);
       } catch (error) {
-        // console.error("Error fetching states:", error);
+        console.error("Error fetching states:", error);
         setCurrentStates([]);
       }
     };
@@ -389,11 +405,35 @@ const EditEmployee = () => {
     fetchCurrentStates(currentCountry);
   }, [currentCountry]);
 
+  // Fetch states when form initializes with existing country data
+  useEffect(() => {
+    if (employeeDetailsData?.current_address?.country && countries.length > 0) {
+      const existingCountry = employeeDetailsData.current_address.country;
+      const fetchInitialStates = async () => {
+        try {
+          const res = await axios.post(
+            "https://countriesnow.space/api/v0.1/countries/states",
+            {
+              country: existingCountry,
+            }
+          );
+          const stateList = res.data?.data?.states || [];
+          const stateNames = stateList.map((s) => s.name);
+          setCurrentStates(stateNames);
+        } catch (error) {
+          console.error("Error fetching initial states:", error);
+        }
+      };
+      fetchInitialStates();
+    }
+  }, [employeeDetailsData?.current_address?.country, countries.length]);
+
   // Fetching the list of states according to the permanent country
   const [permanentStates, setPermanentStates] = useState([]);
   useEffect(() => {
     const fetchPermanentStates = async (country) => {
       if (!country) {
+        setPermanentStates([]);
         return;
       }
 
@@ -420,7 +460,30 @@ const EditEmployee = () => {
     } else {
       fetchPermanentStates(permanentCountry);
     }
-  }, [permanentCountry, sameAsCurrent]);
+  }, [permanentCountry, sameAsCurrent, currentStates, currentState]);
+
+  // Fetch permanent states when form initializes with existing country data
+  useEffect(() => {
+    if (employeeDetailsData?.permanent_address?.country && countries.length > 0 && !sameAsCurrent) {
+      const existingCountry = employeeDetailsData.permanent_address.country;
+      const fetchInitialPermanentStates = async () => {
+        try {
+          const res = await axios.post(
+            "https://countriesnow.space/api/v0.1/countries/states",
+            {
+              country: existingCountry,
+            }
+          );
+          const stateList = res.data?.data?.states || [];
+          const stateNames = stateList.map((s) => s.name);
+          setPermanentStates(stateNames);
+        } catch (error) {
+          console.error("Error fetching initial permanent states:", error);
+        }
+      };
+      fetchInitialPermanentStates();
+    }
+  }, [employeeDetailsData?.permanent_address?.country, countries.length, sameAsCurrent]);
 
   // 
   // useEffect(()=>{
@@ -1059,13 +1122,17 @@ const EditEmployee = () => {
                   <h4 className="font-bold">Current Address</h4>
                   <Grid2 container spacing={2}>
                     <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
-                      <SelectCountry
-                        countries={countries}
-                        {...register("currentCountry", {
-                          required: "This field is required.",
-                        })}
+                      <Controller
+                        name="currentCountry"
+                        control={control}
+                        rules={{ required: "This field is required." }}
+                        render={({ field }) => (
+                          <SelectCountry
+                            countries={countries}
+                            {...field}
+                          />
+                        )}
                       />
-
                       {errors.currentCountry && (
                         <small className="text-red-600">
                           {errors.currentCountry.message}
@@ -1074,11 +1141,16 @@ const EditEmployee = () => {
                     </Grid2>
 
                     <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
-                      <SelectState
-                        states={currentStates}
-                        {...register("currentState", {
-                          required: "This field is required.",
-                        })}
+                      <Controller
+                        name="currentState"
+                        control={control}
+                        rules={{ required: "This field is required." }}
+                        render={({ field }) => (
+                          <SelectState
+                            states={currentStates}
+                            {...field}
+                          />
+                        )}
                       />
                       {errors.currentState && (
                         <small className="text-red-600">
@@ -1160,11 +1232,16 @@ const EditEmployee = () => {
                   </div>
                   <Grid2 container spacing={2}>
                     <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
-                      <SelectCountry
-                        countries={countries}
-                        {...register("permanentCountry", {
-                          required: "This field is required.",
-                        })}
+                      <Controller
+                        name="permanentCountry"
+                        control={control}
+                        rules={{ required: "This field is required." }}
+                        render={({ field }) => (
+                          <SelectCountry
+                            countries={countries}
+                            {...field}
+                          />
+                        )}
                       />
                       {errors.permanentCountry && (
                         <small className="text-red-600">
@@ -1174,11 +1251,16 @@ const EditEmployee = () => {
                     </Grid2>
 
                     <Grid2 size={{ xs: 12, sm: 6 }} className="inputData">
-                      <SelectState
-                        states={permanentStates}
-                        {...register("permanentState", {
-                          required: "This field is required.",
-                        })}
+                      <Controller
+                        name="permanentState"
+                        control={control}
+                        rules={{ required: "This field is required." }}
+                        render={({ field }) => (
+                          <SelectState
+                            states={permanentStates}
+                            {...field}
+                          />
+                        )}
                       />
                       {errors.permanentState && (
                         <small className="text-red-600">

@@ -23,6 +23,7 @@ import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import SearchBar from "./SearchBar";
+import NotificationDropdown from "./Notifications/NotificationDropdown";
 
 import { Link, useLocation, useNavigate } from "react-router";
 import LoadingBar from "react-top-loading-bar";
@@ -296,16 +297,8 @@ export default function Sidebar({ children }) {
               <SearchBar />
             </div>
             
-            {/* Notifications Bell Icon */}
-            <Tooltip title="Notifications">
-              <IconButton
-                className="relative hover:bg-white/10 transition-all duration-200 text-white hover:text-cyan-400"
-              >
-                <CircleNotificationsIcon sx={{ fontSize: 26 }} />
-                {/* Notification Badge */}
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-900 animate-pulse"></span>
-              </IconButton>
-            </Tooltip>
+            {/* Notifications Bell Icon with Dropdown */}
+            <NotificationDropdown />
             
             {/* User Avatar */}
             <div className="relative">

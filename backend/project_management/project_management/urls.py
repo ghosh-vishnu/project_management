@@ -47,6 +47,7 @@ urlpatterns = [
     path('api/finances/', include('finance.urls')),  # Income endpoints (under finances namespace)
     path('api/', include('invoices.urls')),  # Invoices endpoints
     path('api/', include('sprint.urls')),  # Sprint endpoints
+    path('api/', include('notifications.urls')),  # Notifications endpoints
 ]
 
 # Serve media files in development

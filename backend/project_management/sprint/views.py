@@ -16,6 +16,7 @@ from .serializers import (
     SprintRetrospectiveSerializer
 )
 from .ai_services import SprintAIService
+from notifications.utils import notify_sprint_created
 
 
 class SprintViewSet(viewsets.ModelViewSet):
@@ -119,6 +120,19 @@ class SprintViewSet(viewsets.ModelViewSet):
             # Calculate initial progress
             sprint.progress = sprint.calculate_progress()
             sprint.save()
+            
+            # Send notification to project team members
+            try:
+                # Notify the user who created the sprint
+                if request.user:
+                    notify_sprint_created(
+                        user=request.user,
+                        sprint_name=sprint.name,
+                        sprint_id=sprint.id
+                    )
+            except Exception as notify_error:
+                # Don't fail sprint creation if notification fails
+                print(f"Notification error: {notify_error}")
             
             # Return sprint list serializer for consistency
             return Response(

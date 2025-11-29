@@ -17,6 +17,11 @@ urlpatterns = [
     
     # Dashboard summary
     path('dashboard-summary/', views.dashboard_summary, name='dashboard-summary'),
+    path('dashboard/project-progress/', views.dashboard_project_progress, name='dashboard-project-progress'),
+    path('dashboard/weekly-progress/', views.dashboard_weekly_progress, name='dashboard-weekly-progress'),
+    path('dashboard/status-percentage/', views.dashboard_status_percentage, name='dashboard-status-percentage'),
+    path('dashboard/ai-insights/', views.dashboard_ai_insights, name='dashboard-ai-insights'),
+    path('dashboard/kanban-data/', views.dashboard_kanban_data, name='dashboard-kanban-data'),
     
     # AI endpoints
     path('ai/insights/', views.ai_employee_insights, name='ai-employee-insights'),

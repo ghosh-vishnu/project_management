@@ -6,6 +6,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from .models import Task
 from .serializers import TaskListSerializer, TaskCreateSerializer
+from notifications.utils import notify_task_assigned
 
 
 @api_view(['GET', 'POST'])
@@ -94,6 +95,20 @@ def task_list(request):
             serializer = TaskCreateSerializer(data=request.data)
             if serializer.is_valid():
                 task = serializer.save()
+                
+                # Send notification if task is assigned to someone
+                if task.assigned_to and task.assigned_to.user:
+                    try:
+                        notify_task_assigned(
+                            user=task.assigned_to.user,
+                            task_name=task.task_name,
+                            task_id=task.id,
+                            assigned_by=request.user.username
+                        )
+                    except Exception as notify_error:
+                        # Don't fail task creation if notification fails
+                        print(f"Notification error: {notify_error}")
+                
                 # Return list serializer for consistent response
                 response_data = TaskListSerializer(task).data
                 # Format status and priority

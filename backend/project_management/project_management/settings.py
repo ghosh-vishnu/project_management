@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'finance',
     'invoices',
     'sprint',
+    'notifications',
 ]
 
 MIDDLEWARE = [

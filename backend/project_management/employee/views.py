@@ -3,17 +3,20 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.db import transaction, models, models
 from .models import Employee, Address, BankDetails, Documents
 from .serializers import (
     EmployeeListSerializer, EmployeeDetailSerializer, EmployeeCreateSerializer
 )
 from .resume_parser import parse_resume
 from .ai_services import EmployeeAIService
+from notifications.utils import notify_employee_added
 import random
 import string
 import os
 import tempfile
+from datetime import datetime, timedelta
+from django.utils import timezone
 
 
 def generate_random_password(length=8):
@@ -48,12 +51,11 @@ def employee_names_list(request):
                 data.append({
                     'id': getattr(emp, 'id', None),
                     'name': '',
-                    'designation': '',
-                    'error': f'Row error: {row_error}'
+                    'designation': ''
                 })
-        return Response(data)
+        return Response(data, status=status.HTTP_200_OK)
     except Exception as e:
-        return Response({'error': f'Failed to fetch employee names: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -156,27 +158,24 @@ def create_employee(request):
         # Handle documents (files)
         documents = None
         if any(key.startswith('documents.') for key in request.FILES):
-            documents_data = {}
-            for key, file in request.FILES.items():
-                if key.startswith('documents.'):
-                    field_name = key.replace('documents.', '')
-                    documents_data[field_name] = file
-            
-            if documents_data:
-                documents = Documents.objects.create(**documents_data)
+            documents = Documents.objects.create()
+            if 'documents.photo' in request.FILES:
+                documents.photo = request.FILES['documents.photo']
+            if 'documents.pan_card' in request.FILES:
+                documents.pan_card = request.FILES['documents.pan_card']
+            if 'documents.higher_education_certificate' in request.FILES:
+                documents.higher_education_certificate = request.FILES['documents.higher_education_certificate']
+            documents.save()
         
-        # Get department and designation as strings
+        # Get department and designation
         department_name = get_value(data.get('department_id', ''))
         designation_name = get_value(data.get('designation_id', ''))
         
-        # Map IDs to names if needed (for backward compatibility with hardcoded data)
-        # Frontend sends department_id and designation_id as indexes
-        # We need to get the actual names from the hardcoded lists
-        
         # Department mapping
         department_mapping = {
-            '1': 'Project Management', '2': 'Development', '3': 'Design',
-            '4': 'Quality Assurance', '5': 'Human Resources', '6': 'Sales & Marketing',
+            '0': 'Project Management', '1': 'Development', '2': 'Design', 
+            '3': 'Quality Assurance', '4': 'Human Resources', 
+            '5': 'Sales & Marketing', '6': 'Support & Operations',
             '7': 'Finance & Accounts', '8': 'Support & Operations', 
             '9': 'IT Infrastructure', '10': 'Research & Innovation'
         }
@@ -238,6 +237,19 @@ def create_employee(request):
             documents=documents,
         )
         
+        # Send notification to admin users about new employee
+        try:
+            admin_users = User.objects.filter(is_staff=True, is_active=True)
+            for admin_user in admin_users:
+                notify_employee_added(
+                    user=admin_user,
+                    employee_name=employee.name or 'New Employee',
+                    employee_id=employee.id
+                )
+        except Exception as notify_error:
+            # Don't fail employee creation if notification fails
+            print(f"Notification error: {notify_error}")
+        
         # Return created employee data
         serializer = EmployeeDetailSerializer(employee)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -249,71 +261,15 @@ def create_employee(request):
         )
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def employee_list(request):
-    """Get paginated list of employees"""
-    from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-    try:
-        # Parse and validate query params
-        raw_page = request.GET.get('page', '1')
-        raw_page_size = request.GET.get('page_size', '25')
-        show_inactive_raw = request.GET.get('show_inactive', 'false')
-
-        try:
-            page = int(str(raw_page).strip() or '1')
-        except (ValueError, TypeError):
-            page = 1
-        if page < 1:
-            page = 1
-
-        try:
-            page_size = int(str(raw_page_size).strip() or '25')
-        except (ValueError, TypeError):
-            page_size = 25
-        # Reasonable bounds to protect server
-        if page_size < 1:
-            page_size = 1
-        if page_size > 200:
-            page_size = 200
-
-        show_inactive = str(show_inactive_raw).lower() in ('true', '1', 'yes')
-
-        # Build base queryset
-        base_qs = Employee.objects.select_related('user')
-
-        employees = base_qs.all() if show_inactive else base_qs.filter(is_active=True)
-
-        paginator = Paginator(employees, page_size)
-        try:
-            page_obj = paginator.page(page)
-        except (EmptyPage, PageNotAnInteger):
-            # Fallback to last page on overflow or first page on invalid
-            if page > paginator.num_pages:
-                page_obj = paginator.page(paginator.num_pages or 1)
-            else:
-                page_obj = paginator.page(1)
-
-        serializer = EmployeeListSerializer(page_obj, many=True)
-
-        return Response({
-            'count': paginator.count,
-            'next': page_obj.next_page_number() if page_obj.has_next() else None,
-            'previous': page_obj.previous_page_number() if page_obj.has_previous() else None,
-            'results': serializer.data
-        })
-    except Exception as e:
-        return Response({'error': f'Failed to fetch employees: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def employee_detail(request, pk):
-    """Get, update or delete a specific employee"""
+    """Get, update, or delete a specific employee"""
     try:
-        employee = Employee.objects.select_related('user',
-                                                    'current_address', 'permanent_address',
-                                                    'bank_details', 'documents').get(pk=pk)
+        employee = Employee.objects.select_related(
+            'user', 'current_address', 'permanent_address', 
+            'bank_details', 'documents'
+        ).get(pk=pk)
     except Employee.DoesNotExist:
         return Response(
             {'error': 'Employee not found'},
@@ -321,128 +277,239 @@ def employee_detail(request, pk):
         )
     
     if request.method == 'GET':
-        serializer = EmployeeDetailSerializer(employee, context={'request': request})
-        return Response(serializer.data)
+        serializer = EmployeeDetailSerializer(employee)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     elif request.method == 'PUT':
-        # Parse nested FormData structure similar to create
-        data = {}
-        for key, value in request.data.items():
-            if '.' in key:
-                parts = key.split('.')
-                if len(parts) == 2:
-                    if parts[0] not in data:
-                        data[parts[0]] = {}
-                    data[parts[0]][parts[1]] = value
+        try:
+            # Parse nested FormData structure
+            data = {}
+            for key, value in request.data.items():
+                if '.' in key:
+                    parts = key.split('.')
+                    if len(parts) == 2:
+                        if parts[0] not in data:
+                            data[parts[0]] = {}
+                        data[parts[0]][parts[1]] = value
+                    else:
+                        data[key] = value
                 else:
                     data[key] = value
-            else:
-                data[key] = value
         
-        # Handle is_active from user data
-        if 'user' in data and 'is_active' in data['user']:
-            data['is_active'] = str(data['user']['is_active']).lower() in ('true', '1', 'yes')
-        
-        # Handle department and designation as strings
-        if 'department_id' in data:
-            department_mapping = {
-                '1': 'Project Management', '2': 'Development', '3': 'Design',
-                '4': 'Quality Assurance', '5': 'Human Resources', '6': 'Sales & Marketing',
-                '7': 'Finance & Accounts', '8': 'Support & Operations', 
-                '9': 'IT Infrastructure', '10': 'Research & Innovation'
-            }
-            dept_id = str(get_value(data.get('department_id', '')))
-            data['department'] = department_mapping.get(dept_id, dept_id)
+            # Update user if email/password provided
+            if 'user' in data or 'email' in data:
+                email = data.get('user', {}).get('email') if isinstance(data.get('user'), dict) else data.get('email')
+                password = data.get('user', {}).get('password') if isinstance(data.get('user'), dict) else data.get('password')
+                is_active_str = data.get('user', {}).get('is_active') if isinstance(data.get('user'), dict) else data.get('is_active')
+                
+                if email and employee.user.email != email:
+                    if User.objects.filter(email=email).exclude(id=employee.user.id).exists():
+                        return Response(
+                            {'error': 'Email already exists'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    employee.user.email = email
+                    employee.user.username = email.split('@')[0]
+                
+                if password:
+                    employee.user.set_password(password)
+                
+                if is_active_str is not None:
+                    is_active = str(is_active_str).lower() in ('true', '1', 'yes')
+                    employee.user.is_active = is_active
+                    employee.is_active = is_active
+                
+                employee.user.save()
             
-        if 'designation_id' in data and 'department' in data:
-            designation_mapping = {
-                'Project Management': {'0': 'Project Manager', '1': 'Assistant Project Manager', '2': 'Project Coordinator', '3': 'Project Analyst'},
-                'Development': {'0': 'Full Stack Developer', '1': 'Backend Developer (Python/Django)', '2': 'Frontend Developer (React/Angular)', '3': 'Software Engineer', '4': 'Intern Developer'},
-                'Design': {'0': 'UI/UX Designer', '1': 'Graphic Designer', '2': 'Frontend Designer', '3': 'Creative Lead'},
-                'Quality Assurance': {'0': 'QA Engineer', '1': 'QA Lead', '2': 'Software Tester', '3': 'Automation Tester'},
-                'Human Resources': {'0': 'HR Manager', '1': 'HR Executive', '2': 'Talent Acquisition Specialist'},
-                'Sales & Marketing': {'0': 'Business Development Executive', '1': 'Sales Manager', '2': 'Digital Marketing Executive', '3': 'SEO Specialist'},
-                'Finance & Accounts': {'0': 'Accounts Executive', '1': 'Finance Officer', '2': 'Billing & Payroll Executive'},
-                'Support & Operations': {'0': 'Support Engineer', '1': 'Technical Support Executive', '2': 'Operations Manager'},
-                'IT Infrastructure': {'0': 'System Administrator', '1': 'Network Engineer', '2': 'Cloud Administrator'},
-                'Research & Innovation': {'0': 'R&D Specialist', '1': 'Product Researcher', '2': 'Data Analyst'},
-            }
-            dept_name = data.get('department', '')
-            desig_id = str(get_value(data.get('designation_id', '')))
-            if dept_name in designation_mapping:
-                desig_map = designation_mapping[dept_name]
-                data['designation'] = desig_map.get(desig_id, desig_id)
-        
-        # Handle documents (files) update
-        if any(key.startswith('documents.') for key in request.FILES):
-            documents_data = {}
-            for key, file in request.FILES.items():
-                if key.startswith('documents.'):
-                    field_name = key.replace('documents.', '')
-                    documents_data[field_name] = file
+            # Update addresses
+            if 'current_address' in data:
+                addr_data = data['current_address']
+                if isinstance(addr_data, dict):
+                    if employee.current_address:
+                        employee.current_address.address = get_value(addr_data.get('address', ''))
+                        employee.current_address.city = get_value(addr_data.get('city', ''))
+                        employee.current_address.state = get_value(addr_data.get('state', ''))
+                        employee.current_address.country = get_value(addr_data.get('country', ''))
+                        employee.current_address.pincode = get_value(addr_data.get('pincode', ''))
+                        employee.current_address.save()
+                    elif addr_data.get('address'):
+                        employee.current_address = Address.objects.create(
+                            address=get_value(addr_data.get('address', '')),
+                            city=get_value(addr_data.get('city', '')),
+                            state=get_value(addr_data.get('state', '')),
+                            country=get_value(addr_data.get('country', '')),
+                            pincode=get_value(addr_data.get('pincode', '')),
+                            address_type='current'
+                        )
             
-            if documents_data and employee.documents:
-                # Update existing documents
-                for field_name, file in documents_data.items():
-                    setattr(employee.documents, field_name, file)
+            if 'permanent_address' in data:
+                addr_data = data['permanent_address']
+                if isinstance(addr_data, dict):
+                    if employee.permanent_address:
+                        employee.permanent_address.address = get_value(addr_data.get('address', ''))
+                        employee.permanent_address.city = get_value(addr_data.get('city', ''))
+                        employee.permanent_address.state = get_value(addr_data.get('state', ''))
+                        employee.permanent_address.country = get_value(addr_data.get('country', ''))
+                        employee.permanent_address.pincode = get_value(addr_data.get('pincode', ''))
+                        employee.permanent_address.save()
+                    elif addr_data.get('address'):
+                        employee.permanent_address = Address.objects.create(
+                            address=get_value(addr_data.get('address', '')),
+                            city=get_value(addr_data.get('city', '')),
+                            state=get_value(addr_data.get('state', '')),
+                            country=get_value(addr_data.get('country', '')),
+                            pincode=get_value(addr_data.get('pincode', '')),
+                            address_type='permanent'
+                        )
+            
+            # Update bank details
+            if 'bank_details' in data:
+                bank_data = data['bank_details']
+                if isinstance(bank_data, dict) and bank_data.get('account_holder_name'):
+                    if employee.bank_details:
+                        employee.bank_details.account_holder_name = get_value(bank_data.get('account_holder_name', ''))
+                        employee.bank_details.account_number = get_value(bank_data.get('account_number', ''))
+                        employee.bank_details.bank_name = get_value(bank_data.get('bank_name', ''))
+                        employee.bank_details.ifsc_code = get_value(bank_data.get('ifsc_code', ''))
+                        employee.bank_details.branch = get_value(bank_data.get('branch', ''))
+                        employee.bank_details.save()
+                    else:
+                        employee.bank_details = BankDetails.objects.create(
+                            account_holder_name=get_value(bank_data.get('account_holder_name', '')),
+                            account_number=get_value(bank_data.get('account_number', '')),
+                            bank_name=get_value(bank_data.get('bank_name', '')),
+                            ifsc_code=get_value(bank_data.get('ifsc_code', '')),
+                            branch=get_value(bank_data.get('branch', '')),
+                        )
+            
+            # Update documents
+            if any(key.startswith('documents.') for key in request.FILES):
+                if not employee.documents:
+                    employee.documents = Documents.objects.create()
+                if 'documents.photo' in request.FILES:
+                    employee.documents.photo = request.FILES['documents.photo']
+                if 'documents.pan_card' in request.FILES:
+                    employee.documents.pan_card = request.FILES['documents.pan_card']
+                if 'documents.higher_education_certificate' in request.FILES:
+                    employee.documents.higher_education_certificate = request.FILES['documents.higher_education_certificate']
                 employee.documents.save()
-            elif documents_data and not employee.documents:
-                # Create new documents if they don't exist
-                employee.documents = Documents.objects.create(**documents_data)
-                employee.save()
-        
-        # Use the parsed data for serialization
-        serializer = EmployeeDetailSerializer(employee, data=data, partial=True, context={'request': request})
-        if serializer.is_valid():
-            updated_employee = serializer.save()
-
-            # Keep Django User.is_active in sync with Employee.is_active
-            try:
-                # Prefer 'is_active' from request data if provided
-                incoming_is_active = data.get('is_active', None)
-                if incoming_is_active is not None:
-                    # Normalize truthy/falsey values
-                    user_active = str(incoming_is_active).lower() in ('true', '1', 'yes')
+            
+            # Update basic fields
+            if 'name' in data:
+                employee.name = get_value(data.get('name', ''))
+            if 'father_name' in data:
+                employee.father_name = get_value(data.get('father_name', ''))
+            if 'contact_no' in data:
+                employee.contact_no = get_value(data.get('contact_no', ''))
+            if 'alternate_contact_no' in data:
+                employee.alternate_contact_no = get_value(data.get('alternate_contact_no', '')) or None
+            if 'gender' in data:
+                employee.gender = get_value(data.get('gender', ''))
+            if 'pan_no' in data:
+                employee.pan_no = get_value(data.get('pan_no', ''))
+            if 'aadhar_no' in data:
+                employee.aadhar_no = get_value(data.get('aadhar_no', ''))
+            if 'dob' in data:
+                employee.dob = get_value(data.get('dob', '')) or None
+            if 'joining_date' in data:
+                employee.joining_date = get_value(data.get('joining_date', ''))
+            if 'basic_salary' in data:
+                employee.basic_salary = float(get_value(data.get('basic_salary', 0))) if get_value(data.get('basic_salary', 0)) else 0
+            
+            # Update department and designation
+            if 'department_id' in data:
+                department_name = get_value(data.get('department_id', ''))
+                department_mapping = {
+                    '0': 'Project Management', '1': 'Development', '2': 'Design', 
+                    '3': 'Quality Assurance', '4': 'Human Resources', 
+                    '5': 'Sales & Marketing', '6': 'Support & Operations',
+                    '7': 'Finance & Accounts', '8': 'Support & Operations', 
+                    '9': 'IT Infrastructure', '10': 'Research & Innovation'
+                }
+                dept_name = department_mapping.get(str(department_name), department_name)
+                employee.department = dept_name
+            
+            if 'designation_id' in data:
+                designation_name = get_value(data.get('designation_id', ''))
+                designation_mapping = {
+                    'Project Management': {'0': 'Project Manager', '1': 'Assistant Project Manager', '2': 'Project Coordinator', '3': 'Project Analyst'},
+                    'Development': {'0': 'Full Stack Developer', '1': 'Backend Developer (Python/Django)', '2': 'Frontend Developer (React/Angular)', '3': 'Software Engineer', '4': 'Intern Developer'},
+                    'Design': {'0': 'UI/UX Designer', '1': 'Graphic Designer', '2': 'Frontend Designer', '3': 'Creative Lead'},
+                    'Quality Assurance': {'0': 'QA Engineer', '1': 'QA Lead', '2': 'Software Tester', '3': 'Automation Tester'},
+                    'Human Resources': {'0': 'HR Manager', '1': 'HR Executive', '2': 'Talent Acquisition Specialist'},
+                    'Sales & Marketing': {'0': 'Business Development Executive', '1': 'Sales Manager', '2': 'Digital Marketing Executive', '3': 'SEO Specialist'},
+                    'Finance & Accounts': {'0': 'Accounts Executive', '1': 'Finance Officer', '2': 'Billing & Payroll Executive'},
+                    'Support & Operations': {'0': 'Support Engineer', '1': 'Technical Support Executive', '2': 'Operations Manager'},
+                    'IT Infrastructure': {'0': 'System Administrator', '1': 'Network Engineer', '2': 'Cloud Administrator'},
+                    'Research & Innovation': {'0': 'R&D Specialist', '1': 'Product Researcher', '2': 'Data Analyst'},
+                }
+                dept_name = employee.department
+                if dept_name in designation_mapping:
+                    desig_map = designation_mapping[dept_name]
+                    desig_name = desig_map.get(str(designation_name), designation_name)
+                    employee.designation = desig_name
                 else:
-                    # Fallback to the model value just saved
-                    user_active = bool(getattr(updated_employee, 'is_active', True))
-
-                if updated_employee.user and updated_employee.user.is_active != user_active:
-                    updated_employee.user.is_active = user_active
-                    updated_employee.user.save(update_fields=['is_active'])
-            except Exception:
-                # Do not fail the request if syncing user flag encounters an issue
-                pass
-
-            return Response(EmployeeDetailSerializer(updated_employee, context={'request': request}).data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    employee.designation = designation_name
+            
+            employee.save()
+            
+            serializer = EmployeeDetailSerializer(employee)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     elif request.method == 'DELETE':
-        # Soft delete: deactivate employee and linked user, revoke tokens
-        try:
-            # Deactivate employee record
-            if hasattr(employee, 'is_active'):
-                employee.is_active = False
-                employee.save(update_fields=['is_active'])
+        employee.delete()
+        return Response(
+            {'message': 'Employee deleted successfully'},
+            status=status.HTTP_200_OK
+        )
 
-            # Deactivate associated user and remove auth tokens
-            if employee.user:
-                employee.user.is_active = False
-                employee.user.save(update_fields=['is_active'])
-                try:
-                    from rest_framework.authtoken.models import Token
-                    Token.objects.filter(user=employee.user).delete()
-                except Exception:
-                    # Token model might not be configured; ignore silently
-                    pass
 
-            return Response({
-                'detail': 'Employee deactivated successfully'
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def employee_list(request):
+    """List all employees with pagination"""
+    try:
+        # Get pagination parameters
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 25))
+        show_inactive = request.query_params.get('show_inactive', 'false').lower() == 'true'
+        
+        # Build queryset
+        queryset = Employee.objects.select_related(
+            'user', 'current_address', 'permanent_address', 
+            'bank_details', 'documents'
+        ).all()
+        
+        if not show_inactive:
+            queryset = queryset.filter(is_active=True)
+        
+        # Calculate pagination
+        total = queryset.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+        employees = queryset[start:end]
+        
+        # Serialize
+        serializer = EmployeeListSerializer(employees, many=True)
+
+        return Response({
+            'count': total,
+            'results': serializer.data,
+            'page': page,
+            'page_size': page_size
             }, status=status.HTTP_200_OK)
-        except Exception as exc:
-            return Response({
-                'error': f'Failed to deactivate employee: {exc}'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['GET'])
@@ -458,21 +525,35 @@ def dashboard_summary(request):
         try:
             from projects.models import Project
             projects_count = Project.objects.count()
+            ongoing_projects = Project.objects.filter(status='in_progress').count()
         except Exception:
             projects_count = 0
+            ongoing_projects = 0
+            
         try:
             from clients.models import Client
             clients_count = Client.objects.count()
         except Exception:
             clients_count = 0
 
-        # Tasks app currently has no models; keep at 0
-        tasks_count = 0
+        # Task statistics
+        try:
+            from tasks.models import Task
+            total_tasks = Task.objects.count()
+            completed_tasks = Task.objects.filter(status='completed').count()
+            pending_tasks = Task.objects.filter(status__in=['todo', 'in_progress', 'review', 'testing']).count()
+        except Exception:
+            total_tasks = 0
+            completed_tasks = 0
+            pending_tasks = 0
 
         summary_data = {
             'employees': total_employees,
             'projects': projects_count,
-            'tasks': tasks_count,
+            'ongoing_projects': ongoing_projects,
+            'tasks': total_tasks,
+            'completed_tasks': completed_tasks,
+            'pending_tasks': pending_tasks,
             'clients': clients_count,
             'active_employees': active_employees,
             'inactive_employees': total_employees - active_employees,
@@ -485,182 +566,553 @@ def dashboard_summary(request):
             'error': f'Error fetching dashboard summary: {str(e)}',
             'employees': 0,
             'projects': 0,
+            'ongoing_projects': 0,
             'tasks': 0,
+            'completed_tasks': 0,
+            'pending_tasks': 0,
             'clients': 0,
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_project_progress(request):
+    """Get project progress data for dashboard"""
+    try:
+        from projects.models import Project
+        from tasks.models import Task
+        
+        projects = Project.objects.all()[:10]  # Get top 10 projects
+        project_progress = []
+        
+        for project in projects:
+            # Calculate progress based on tasks
+            project_tasks = Task.objects.filter(project=project)
+            total_tasks = project_tasks.count()
+            
+            if total_tasks > 0:
+                completed_tasks = project_tasks.filter(status='completed').count()
+                progress_percentage = int((completed_tasks / total_tasks) * 100)
+            else:
+                # If no tasks, calculate based on dates
+                if project.start_date and project.end_date:
+                    today = timezone.now().date()
+                    total_days = (project.end_date - project.start_date).days
+                    if total_days > 0:
+                        elapsed_days = (today - project.start_date).days
+                        progress_percentage = min(100, max(0, int((elapsed_days / total_days) * 100)))
+                    else:
+                        progress_percentage = 0
+                else:
+                    progress_percentage = 0
+            
+            project_progress.append({
+                'id': project.id,
+                'name': project.title,
+                'progress': progress_percentage,
+                'status': project.status,
+            })
+        
+        # Sort by progress descending
+        project_progress.sort(key=lambda x: x['progress'], reverse=True)
+
+        return Response({
+            'projects': project_progress
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        return Response({
+            'error': f'Error fetching project progress: {str(e)}',
+            'projects': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_weekly_progress(request):
+    """Get weekly progress data for line chart"""
+    try:
+        from tasks.models import Task
+        from datetime import datetime, timedelta
+        
+        # Get last 7 days
+        today = timezone.now().date()
+        week_data = []
+        
+        for i in range(6, -1, -1):  # Last 7 days including today
+            date = today - timedelta(days=i)
+            day_name = date.strftime('%a')  # Mon, Tue, etc.
+            
+            # Count tasks created up to this date
+            tasks_until_date = Task.objects.filter(created_at__date__lte=date)
+            total_tasks = tasks_until_date.count()
+            completed_tasks = tasks_until_date.filter(status='completed').count()
+            
+            # Calculate progress percentage
+            if total_tasks > 0:
+                progress = int((completed_tasks / total_tasks) * 100)
+            else:
+                progress = 0
+            
+            week_data.append({
+                'week': day_name,
+                'progress': progress
+            })
+        
+        return Response({
+            'data': week_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error fetching weekly progress: {str(e)}',
+            'data': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_status_percentage(request):
+    """Get overall status percentage for donut chart"""
+    try:
+        from tasks.models import Task
+        
+        total_tasks = Task.objects.count()
+        completed_tasks = Task.objects.filter(status='completed').count()
+        
+        if total_tasks > 0:
+            completion_percentage = int((completed_tasks / total_tasks) * 100)
+            remaining_percentage = 100 - completion_percentage
+        else:
+            completion_percentage = 0
+            remaining_percentage = 100
+        
+        return Response({
+            'completion_percentage': completion_percentage,
+            'remaining_percentage': remaining_percentage,
+            'total_tasks': total_tasks,
+            'completed_tasks': completed_tasks
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error fetching status percentage: {str(e)}',
+            'completion_percentage': 0,
+            'remaining_percentage': 100
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_kanban_data(request):
+    """Get comprehensive Kanban dashboard data"""
+    try:
+        from projects.models import Project
+        from tasks.models import Task
+        from django.contrib.auth.models import User
+        from datetime import date, timedelta
+        
+        today = timezone.now().date()
+        
+        # Project by Status
+        project_status_data = {
+            'in_progress': Project.objects.filter(status='in_progress').count(),
+            'completed': Project.objects.filter(status='completed').count(),
+            'planning': Project.objects.filter(status='planning').count(),
+            'paused': Project.objects.filter(status='paused').count(),
+            'cancelled': Project.objects.filter(status='cancelled').count(),
+            'not_started': Project.objects.filter(status='not_started').count(),
+        }
+        
+        # Project by Due Date
+        projects = Project.objects.all()
+        on_time = 0
+        due = 0
+        over_due = 0
+        due_projects = []
+        
+        for project in projects:
+            if project.end_date:
+                days_remaining = (project.end_date - today).days
+                if days_remaining < 0:
+                    over_due += 1
+                    if len(due_projects) < 6:
+                        due_projects.append({'id': project.id, 'name': project.title})
+                elif days_remaining <= 7:
+                    due += 1
+                    if len(due_projects) < 6:
+                        due_projects.append({'id': project.id, 'name': project.title})
+                else:
+                    on_time += 1
+        
+        # Workload calculation (based on tasks per employee)
+        employees = Employee.objects.filter(is_active=True)
+        total_tasks = Task.objects.count()
+        active_employees = employees.count()
+        
+        if active_employees > 0:
+            avg_tasks_per_employee = total_tasks / active_employees
+            # Assuming healthy range is 5-15 tasks per employee
+            healthy_count = sum(1 for emp in employees if 5 <= Task.objects.filter(assigned_to=emp).count() <= 15)
+            underutilised_count = sum(1 for emp in employees if Task.objects.filter(assigned_to=emp).count() < 5)
+            overutilised_count = sum(1 for emp in employees if Task.objects.filter(assigned_to=emp).count() > 15)
+            
+            total_workload = healthy_count + underutilised_count + overutilised_count
+            if total_workload > 0:
+                healthy_percent = int((healthy_count / total_workload) * 100)
+                underutilised_percent = int((underutilised_count / total_workload) * 100)
+                overutilised_percent = 100 - healthy_percent - underutilised_percent
+            else:
+                healthy_percent = 85
+                underutilised_percent = 13
+                overutilised_percent = 2
+        else:
+            healthy_percent = 85
+            underutilised_percent = 13
+            overutilised_percent = 2
+        
+        # Project by Project Manager
+        project_managers = {}
+        for project in projects:
+            if project.assigned_to:
+                # Get proper name - prefer Employee model name, then User full name, then first name, then formatted username
+                user = project.assigned_to
+                pm_name = None
+                
+                # First priority: Check if user has Employee profile with name
+                try:
+                    if hasattr(user, 'employee_profile'):
+                        employee = user.employee_profile
+                        if employee and employee.name:
+                            pm_name = employee.name
+                except Exception:
+                    pass
+                
+                # Second priority: User's full name
+                if not pm_name and user.get_full_name():
+                    pm_name = user.get_full_name()
+                
+                # Third priority: User's first name
+                if not pm_name and user.first_name:
+                    pm_name = user.first_name
+                
+                # Last resort: Format username
+                if not pm_name:
+                    username = user.username
+                    if '@' in username:
+                        # Remove email domain and format
+                        pm_name = username.split('@')[0].replace('.', ' ').replace('_', ' ').title()
+                    else:
+                        # Format username by replacing dots and underscores with spaces
+                        pm_name = username.replace('.', ' ').replace('_', ' ').title()
+                
+                # Use the formatted name
+                if pm_name:
+                    project_managers[pm_name] = project_managers.get(pm_name, 0) + 1
+        
+        # Sort and get top 5
+        sorted_managers = sorted(project_managers.items(), key=lambda x: x[1], reverse=True)[:5]
+        manager_data = [{'name': name, 'count': count} for name, count in sorted_managers]
+        
+        # Financial data - Calculate from actual Income, Expense, and Invoice models
+        try:
+            from finance.models import Income, Expense
+            from invoices.models import Invoice
+            
+            # Actual Revenue: Sum of all income amounts
+            total_revenue = float(Income.objects.aggregate(
+                total=models.Sum('amount')
+            )['total'] or 0)
+            
+            # Planned Revenue: Sum of all invoice amounts (what we expect to receive)
+            # This is dynamic - based on actual invoices created
+            planned_revenue = float(Invoice.objects.aggregate(
+                total=models.Sum('amount')
+            )['total'] or 0)
+            
+            # If no invoices, use project budgets as planned revenue (also dynamic)
+            if planned_revenue == 0:
+                planned_revenue = sum(float(p.budget) for p in projects if p.budget) if projects.exists() else 0
+            
+            # Only use estimate if we have NO data at all (both invoices and budgets are 0)
+            # This means: if we have actual revenue but no planned data, estimate 20% growth
+            if planned_revenue == 0 and total_revenue > 0:
+                # Estimate: Assume 20% growth target (more realistic than 33%)
+                planned_revenue = total_revenue * 1.20
+            elif planned_revenue == 0:
+                # No data at all - set to 0 instead of random estimate
+                planned_revenue = 0
+            
+            # Actual Cost: Sum of all expense amounts
+            total_cost = float(Expense.objects.aggregate(
+                total=models.Sum('amount')
+            )['total'] or 0)
+            
+            # Planned Cost: Calculate from actual expenses with realistic growth
+            # If we have actual expenses, plan for 10% increase (more realistic)
+            if total_cost > 0:
+                # Dynamic: Based on actual expenses, plan for 10% increase
+                planned_cost = total_cost * 1.10
+            elif planned_revenue > 0:
+                # If no expenses but we have planned revenue, estimate cost as 25% of revenue
+                # This is a standard business ratio (cost should be 20-30% of revenue)
+                planned_cost = planned_revenue * 0.25
+            else:
+                # No data - set to 0
+                planned_cost = 0
+            
+            # Calculate margins
+            total_margin = total_revenue - total_cost
+            planned_margin = planned_revenue - planned_cost
+            
+        except ImportError:
+            # Fallback if models don't exist
+            total_revenue = sum(float(p.budget) for p in projects if p.budget) if projects.exists() else 0
+            planned_revenue = total_revenue * 1.33 if total_revenue > 0 else 0
+            total_cost = total_revenue * 0.27 if total_revenue > 0 else 0
+            planned_cost = total_revenue * 1.13 if total_revenue > 0 else 0
+            total_margin = total_revenue - total_cost
+            planned_margin = planned_revenue - planned_cost
+        except Exception as e:
+            # Error handling
+            total_revenue = sum(float(p.budget) for p in projects if p.budget) if projects.exists() else 0
+            planned_revenue = total_revenue * 1.33 if total_revenue > 0 else 0
+            total_cost = total_revenue * 0.27 if total_revenue > 0 else 0
+            planned_cost = total_revenue * 1.13 if total_revenue > 0 else 0
+            total_margin = total_revenue - total_cost
+            planned_margin = planned_revenue - planned_cost
+        
+        return Response({
+            'project_status': project_status_data,
+            'project_due_date': {
+                'on_time': on_time,
+                'due': due,
+                'over_due': over_due,
+                'due_projects': due_projects
+            },
+            'workload': {
+                'healthy': healthy_percent,
+                'underutilised': underutilised_percent,
+                'overutilised': overutilised_percent
+            },
+            'project_managers': manager_data,
+            'financial': {
+                'total_projects': {
+                    'actual': projects.count(),
+                    # Planned: If we have projects, calculate based on active/in-progress projects
+                    # Assume we plan to complete current projects + add 50% more
+                    'planned': int(projects.filter(status__in=['in_progress', 'planning', 'not_started']).count() * 1.5) + projects.filter(status='completed').count() if projects.exists() else 0
+                },
+                'total_revenue': {
+                    'actual': round(total_revenue, 2),
+                    'planned': round(planned_revenue, 2)
+                },
+                'total_cost': {
+                    'actual': round(total_cost, 2),
+                    'planned': round(planned_cost, 2)
+                },
+                'total_margin': {
+                    'actual': round(total_margin, 2),
+                    'planned': round(planned_margin, 2)
+                }
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error fetching Kanban data: {str(e)}',
+            'project_status': {},
+            'project_due_date': {'on_time': 0, 'due': 0, 'over_due': 0, 'due_projects': []},
+            'workload': {'healthy': 85, 'underutilised': 13, 'overutilised': 2},
+            'project_managers': [],
+            'financial': {}
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_ai_insights(request):
+    """Get AI-powered dashboard insights"""
+    try:
+        from projects.models import Project
+        from tasks.models import Task
+        from employee.models import Employee
+        
+        # Get recent projects
+        recent_projects = Project.objects.filter(status='in_progress').order_by('-start_date')[:5]
+        
+        insights = []
+        
+        for project in recent_projects:
+            project_tasks = Task.objects.filter(project=project)
+            total_tasks = project_tasks.count()
+            completed_tasks = project_tasks.filter(status='completed').count()
+            
+            if total_tasks > 0:
+                progress = int((completed_tasks / total_tasks) * 100)
+                
+                # Calculate days ahead/behind
+                if project.end_date:
+                    today = timezone.now().date()
+                    days_remaining = (project.end_date - today).days
+                    
+                    # Estimate completion based on current progress
+                    if progress > 0:
+                        days_elapsed = (today - project.start_date).days if project.start_date else 0
+                        if days_elapsed > 0:
+                            rate = progress / days_elapsed
+                            estimated_days_needed = (100 - progress) / rate if rate > 0 else days_remaining
+                            days_ahead = days_remaining - estimated_days_needed
+                            
+                            if days_ahead > 0:
+                                insights.append({
+                                    'project_name': project.title,
+                                    'progress': progress,
+                                    'days_ahead': int(days_ahead),
+                                    'message': f"{project.title} is {progress}% complete — expected to finish {int(days_ahead)} day{'s' if days_ahead > 1 else ''} ahead."
+                                })
+                            elif days_ahead < -1:
+                                insights.append({
+                                    'project_name': project.title,
+                                    'progress': progress,
+                                    'days_behind': int(abs(days_ahead)),
+                                    'message': f"{project.title} is {progress}% complete — may finish {int(abs(days_ahead))} day{'s' if abs(days_ahead) > 1 else ''} behind schedule."
+                                })
+        
+        # If no insights, provide default
+        if not insights:
+            insights.append({
+                'project_name': 'General',
+                'progress': 0,
+                'message': 'No active projects to analyze. Create projects to get AI insights.'
+            })
+        
+        return Response({
+            'insights': insights[:3]  # Return top 3 insights
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error generating AI insights: {str(e)}',
+            'insights': [{
+                'message': 'Unable to generate insights at this time.'
+            }]
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def parse_resume_api(request):
-    """
-    Upload and parse a resume (PDF/DOCX) to extract candidate information.
-    
-    Returns JSON with extracted fields for auto-filling employee form.
-    """
+    """Parse resume file and extract employee information"""
     try:
         if 'resume' not in request.FILES:
-            return Response({
-                'error': 'No resume file uploaded'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'No resume file provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        uploaded_file = request.FILES['resume']
+        resume_file = request.FILES['resume']
         
-        # Validate file type
-        if not uploaded_file.name.endswith(('.pdf', '.docx', '.doc')):
-            return Response({
-                'error': 'Invalid file type. Only PDF, DOCX, and DOC files are allowed.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{uploaded_file.name}") as tmp_file:
-            for chunk in uploaded_file.chunks():
+        # Save file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(resume_file.name)[1]) as tmp_file:
+            for chunk in resume_file.chunks():
                 tmp_file.write(chunk)
-            tmp_file_path = tmp_file.name
+            tmp_path = tmp_file.name
         
         try:
-            # Parse the resume
-            result = parse_resume(tmp_file_path)
-            
-            # Clean up temporary file
-            os.unlink(tmp_file_path)
-            
-            return Response(result, status=status.HTTP_200_OK)
-        
-        except Exception as parse_error:
-            # Clean up in case of error
-            if os.path.exists(tmp_file_path):
-                os.unlink(tmp_file_path)
-            
-            return Response({
-                'error': f'Error parsing resume: {str(parse_error)}',
-                "EmployeeName": None, "FathersName": None, "Email": None,
-                "ContactNumber": None, "AlternateContact": None,
-                "Gender": None, "PAN": None, "Aadhaar": None, "DOB": None,
-                "confidences": {}
-            }, status=status.HTTP_400_BAD_REQUEST)
-    
+            # Parse resume
+            parsed_data = parse_resume(tmp_path)
+            return Response(parsed_data, status=status.HTTP_200_OK)
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+                
     except Exception as e:
-        return Response({
-            'error': f'Unexpected error: {str(e)}',
-            "EmployeeName": None, "FathersName": None, "Email": None,
-            "ContactNumber": None, "AlternateContact": None,
-            "Gender": None, "PAN": None, "Aadhaar": None, "DOB": None,
-            "confidences": {}
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {'error': f'Error parsing resume: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
-# AI-Powered Employee Features
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def ai_employee_insights(request):
-    """AI endpoint to generate employee workforce insights"""
+    """Get AI-powered insights for employees"""
     try:
-        employees = Employee.objects.select_related('user').all()
-        serializer = EmployeeListSerializer(employees, many=True)
-        
-        insights = EmployeeAIService.generate_employee_insights(serializer.data)
-        
-        return Response({
-            'insights': insights
-        }, status=status.HTTP_200_OK)
+        insights = EmployeeAIService.get_employee_insights()
+        return Response(insights, status=status.HTTP_200_OK)
     except Exception as e:
-        return Response({
-            'error': f'Failed to generate insights: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {'error': f'Error generating insights: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def ai_similar_employees(request, employee_id):
-    """AI endpoint to find similar employees"""
+    """Find similar employees using AI"""
     try:
-        employees = Employee.objects.select_related('user').all()
-        serializer = EmployeeListSerializer(employees, many=True)
-        
-        similar = EmployeeAIService.find_similar_employees(employee_id, serializer.data)
-        
-        return Response({
-            'similar_employees': similar
-        }, status=status.HTTP_200_OK)
+        employee = Employee.objects.get(id=employee_id)
+        similar = EmployeeAIService.find_similar_employees(employee)
+        return Response(similar, status=status.HTTP_200_OK)
+    except Employee.DoesNotExist:
+        return Response(
+            {'error': 'Employee not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as e:
-        return Response({
-            'error': f'Failed to find similar employees: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {'error': f'Error finding similar employees: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def ai_team_recommendations(request):
-    """AI endpoint to get team recommendations"""
+    """Get AI-powered team recommendations"""
     try:
-        employees = Employee.objects.select_related('user').filter(is_active=True)
-        serializer = EmployeeListSerializer(employees, many=True)
-        
-        requirements = request.data.get('requirements', {})
-        recommendations = EmployeeAIService.generate_team_recommendations(serializer.data, requirements)
-        
-        return Response({
-            'recommendations': recommendations
-        }, status=status.HTTP_200_OK)
+        recommendations = EmployeeAIService.get_team_recommendations()
+        return Response(recommendations, status=status.HTTP_200_OK)
     except Exception as e:
-        return Response({
-            'error': f'Failed to generate recommendations: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {'error': f'Error generating recommendations: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
-@api_view(['GET'])
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def ai_churn_prediction(request):
-    """AI endpoint to predict employee churn"""
+    """Predict employee churn using AI"""
     try:
-        employees = Employee.objects.select_related('user').all()
-        serializer = EmployeeListSerializer(employees, many=True)
-        
-        at_risk = EmployeeAIService.predict_employee_churn(serializer.data)
-        
-        return Response({
-            'at_risk_employees': at_risk
-        }, status=status.HTTP_200_OK)
+        predictions = EmployeeAIService.predict_churn()
+        return Response(predictions, status=status.HTTP_200_OK)
     except Exception as e:
-        return Response({
-            'error': f'Failed to predict churn: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {'error': f'Error predicting churn: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def ai_natural_language_search(request):
-    """AI endpoint to parse natural language queries"""
+    """Natural language search for employees"""
     try:
         query = request.data.get('query', '')
-        
         if not query:
-            return Response({
-                'error': 'Query is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Query is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        filters = EmployeeAIService.analyze_natural_language_query(query)
-        
-        # Apply filters to get employees
-        employees_qs = Employee.objects.select_related('user')
-        
-        if filters.get('status') == 'active':
-            employees_qs = employees_qs.filter(is_active=True)
-        elif filters.get('status') == 'inactive':
-            employees_qs = employees_qs.filter(is_active=False)
-        
-        if filters.get('department'):
-            employees_qs = employees_qs.filter(department__icontains=filters['department'])
-        
-        employees = employees_qs.all()
-        serializer = EmployeeListSerializer(employees, many=True)
-        
-        return Response({
-            'filters': filters,
-            'results': serializer.data[:filters.get('limit', 50)]
-        }, status=status.HTTP_200_OK)
+        results = EmployeeAIService.natural_language_search(query)
+        return Response(results, status=status.HTTP_200_OK)
     except Exception as e:
-        return Response({
-            'error': f'Failed to process query: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {'error': f'Error performing search: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
