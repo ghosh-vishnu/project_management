@@ -350,7 +350,7 @@ const Employee = () => {
     });
 
     setFilteredEmployeeData(filtered);
-  }, [searchQuery, employeeData, sortBy, sortOrder, filterDepartment, filterDesignation]);
+  }, [searchQuery, employeeData, sortBy, sortOrder, filterDepartment, filterDesignation, quickFilter]);
 
   // Use Effect
   useEffect(() => {
