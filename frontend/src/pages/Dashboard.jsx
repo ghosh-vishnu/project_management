@@ -25,6 +25,7 @@ const Dashboard = () => {
   const [hoveredCard, setHoveredCard] = useState(null);
   const [hoveredChart, setHoveredChart] = useState(null);
   const [selectedBar, setSelectedBar] = useState(null);
+  const [hoveredBenchmark, setHoveredBenchmark] = useState(null);
   
   // AI Features State
   const [aiInsights, setAiInsights] = useState([]);
@@ -1307,36 +1308,44 @@ const Dashboard = () => {
             ) : trendPredictions ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Revenue Trend */}
-              {trendPredictions.revenue_trend?.forecast?.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-gray-700 mb-2">Revenue Trend</h4>
+              <div>
+                <h4 className="font-semibold text-gray-700 mb-2">Revenue Trend</h4>
+                {trendPredictions.revenue_trend?.forecast?.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <LineChart data={trendPredictions.revenue_trend.forecast}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
                       <YAxis />
                       <RechartsTooltip formatter={(value) => formatCurrency(value)} />
-                      <Line type="monotone" dataKey="predicted_revenue" stroke="#3b82f6" strokeWidth={2} />
+                      <Line type="monotone" dataKey="predicted_revenue" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
                     </LineChart>
                   </ResponsiveContainer>
-                </div>
-              )}
+                ) : (
+                  <div className="h-[200px] flex items-center justify-center text-gray-400 text-sm">
+                    No revenue data available
+                  </div>
+                )}
+              </div>
               
               {/* Cost Trend */}
-              {trendPredictions.cost_trend?.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-gray-700 mb-2">Cost Trend</h4>
+              <div>
+                <h4 className="font-semibold text-gray-700 mb-2">Cost Trend</h4>
+                {trendPredictions.cost_trend?.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <LineChart data={trendPredictions.cost_trend}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
                       <YAxis />
                       <RechartsTooltip formatter={(value) => formatCurrency(value)} />
-                      <Line type="monotone" dataKey="predicted_cost" stroke="#ef4444" strokeWidth={2} />
+                      <Line type="monotone" dataKey="predicted_cost" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
                     </LineChart>
                   </ResponsiveContainer>
-                </div>
-              )}
+                ) : (
+                  <div className="h-[200px] flex items-center justify-center text-gray-400 text-sm">
+                    No cost data available
+                  </div>
+                )}
+              </div>
             </div>
             ) : (
               <div className="text-center py-4 text-gray-500">No trend data available</div>
@@ -1360,7 +1369,11 @@ const Dashboard = () => {
             ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {benchmarks.revenue && (
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div 
+                  className="p-4 bg-gray-50 rounded-lg relative cursor-pointer transition-all hover:shadow-lg"
+                  onMouseEnter={() => setHoveredBenchmark('revenue')}
+                  onMouseLeave={() => setHoveredBenchmark(null)}
+                >
                   <h4 className="font-semibold text-gray-700 mb-2">Revenue</h4>
                   <div className="space-y-2">
                     <div className="flex justify-between">
@@ -1382,11 +1395,42 @@ const Dashboard = () => {
                       </span>
                     </div>
                   </div>
+                  
+                  {/* Hover Tooltip */}
+                  {hoveredBenchmark === 'revenue' && (
+                    <AnimatePresence>
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-gray-800 text-white text-xs rounded-lg shadow-xl p-3 z-[9999]"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        <div className="space-y-1">
+                          <div className="font-semibold mb-2">Revenue Benchmark Details</div>
+                          <div>Current Month: {formatCurrency(benchmarks.revenue.current)}</div>
+                          <div>6-Month Average: {formatCurrency(benchmarks.revenue.historical_avg)}</div>
+                          <div>Trend: {benchmarks.revenue.trend === 'up' ? '📈 Increasing' : benchmarks.revenue.trend === 'down' ? '📉 Decreasing' : '➡️ Stable'}</div>
+                          <div className="pt-1 border-t border-gray-700 mt-1 text-gray-300">
+                            Comparison: Current month vs last 6 months average
+                          </div>
+                        </div>
+                        {/* Arrow */}
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                          <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+                        </div>
+                      </motion.div>
+                    </AnimatePresence>
+                  )}
                 </div>
               )}
               
               {benchmarks.project_completion && (
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div 
+                  className="p-4 bg-gray-50 rounded-lg relative cursor-pointer transition-all hover:shadow-lg"
+                  onMouseEnter={() => setHoveredBenchmark('project_completion')}
+                  onMouseLeave={() => setHoveredBenchmark(null)}
+                >
                   <h4 className="font-semibold text-gray-700 mb-2">Project Completion</h4>
                   <div className="space-y-2">
                     <div className="flex justify-between">
@@ -1408,6 +1452,33 @@ const Dashboard = () => {
                       </span>
                     </div>
                   </div>
+                  
+                  {/* Hover Tooltip */}
+                  {hoveredBenchmark === 'project_completion' && (
+                    <AnimatePresence>
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-gray-800 text-white text-xs rounded-lg shadow-xl p-3 z-[9999]"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        <div className="space-y-1">
+                          <div className="font-semibold mb-2">Project Completion Benchmark</div>
+                          <div>Current Month: {benchmarks.project_completion.current} projects</div>
+                          <div>6-Month Average: {benchmarks.project_completion.historical_avg?.toFixed(1)} projects/month</div>
+                          <div>Trend: {benchmarks.project_completion.trend === 'up' ? '📈 Increasing' : benchmarks.project_completion.trend === 'down' ? '📉 Decreasing' : '➡️ Stable'}</div>
+                          <div className="pt-1 border-t border-gray-700 mt-1 text-gray-300">
+                            Comparison: Current month vs last 6 months average
+                          </div>
+                        </div>
+                        {/* Arrow */}
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                          <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+                        </div>
+                      </motion.div>
+                    </AnimatePresence>
+                  )}
                 </div>
               )}
             </div>

@@ -319,17 +319,17 @@ class DashboardAIService:
             }]
     
     @staticmethod
-    def predict_revenue_forecast(current_revenue: float, months: int = 3) -> Dict:
-        """Predict revenue for next N months"""
+    def predict_revenue_forecast(monthly_revenue: float, months: int = 3) -> Dict:
+        """Predict revenue for next N months based on monthly revenue"""
         try:
-            # Simple linear regression based on current trends
-            # In production, use more sophisticated ML models
-            monthly_avg = current_revenue / 12 if current_revenue > 0 else 0
+            # monthly_revenue is already a monthly average, use it directly
+            base_monthly = monthly_revenue if monthly_revenue > 0 else 0
             forecast = []
             
             for i in range(1, months + 1):
-                # Add 5% growth assumption (can be made dynamic)
-                predicted = monthly_avg * (1 + (0.05 * i))
+                # Add 5% monthly growth assumption (can be made dynamic)
+                # Growth is cumulative: month 1 = 5%, month 2 = 10%, etc.
+                predicted = base_monthly * (1 + (0.05 * i))
                 forecast.append({
                     'month': i,
                     'predicted_revenue': round(predicted, 2),
@@ -625,10 +625,25 @@ class DashboardAIService:
     def generate_trend_predictions(financial_data: List[Dict], project_data: List[Dict], months: int = 6) -> Dict:
         """Generate trend predictions for revenue, projects, and costs"""
         try:
-            # Revenue trend
+            # Revenue trend - use average of last 3 months or recent revenue
             if financial_data:
-                recent_revenue = financial_data[-1].get('revenue', 0) if isinstance(financial_data[-1], dict) else financial_data[-1] if isinstance(financial_data[-1], (int, float)) else 0
-                revenue_trend = DashboardAIService.predict_revenue_forecast(recent_revenue, months)
+                # Calculate average of last 3 months for more stable prediction
+                recent_months = financial_data[:3] if len(financial_data) >= 3 else financial_data
+                avg_revenue = sum([d.get('revenue', 0) for d in recent_months if isinstance(d, dict)]) / len(recent_months) if recent_months else 0
+                
+                # If average is 0, use the most recent non-zero value
+                if avg_revenue == 0:
+                    for d in financial_data:
+                        if isinstance(d, dict) and d.get('revenue', 0) > 0:
+                            avg_revenue = d.get('revenue', 0)
+                            break
+                
+                # If still 0, use last month's revenue
+                if avg_revenue == 0:
+                    recent_revenue = financial_data[-1].get('revenue', 0) if isinstance(financial_data[-1], dict) else 0
+                    avg_revenue = recent_revenue
+                
+                revenue_trend = DashboardAIService.predict_revenue_forecast(avg_revenue, months)
             else:
                 revenue_trend = {'forecast': [], 'total_forecast': 0, 'growth_rate': 0}
             
@@ -647,15 +662,31 @@ class DashboardAIService:
                         'confidence': max(60, 100 - (i * 5))
                     })
             
-            # Cost trend
+            # Cost trend - use average of last 3 months
             cost_trend = []
             if financial_data:
-                recent_cost = financial_data[-1].get('cost', 0) if isinstance(financial_data[-1], dict) else 0
-                monthly_cost = recent_cost / 12 if recent_cost > 0 else 0
+                # Calculate average of last 3 months for more stable prediction
+                recent_months = financial_data[:3] if len(financial_data) >= 3 else financial_data
+                avg_monthly_cost = sum([d.get('cost', 0) for d in recent_months if isinstance(d, dict)]) / len(recent_months) if recent_months else 0
+                
+                # If average is 0, use the most recent non-zero value
+                if avg_monthly_cost == 0:
+                    for d in financial_data:
+                        if isinstance(d, dict) and d.get('cost', 0) > 0:
+                            avg_monthly_cost = d.get('cost', 0)
+                            break
+                
+                # If still 0, use last month's cost
+                if avg_monthly_cost == 0:
+                    recent_cost = financial_data[-1].get('cost', 0) if isinstance(financial_data[-1], dict) else 0
+                    avg_monthly_cost = recent_cost
+                
+                # Base cost for prediction
+                base_cost = avg_monthly_cost if avg_monthly_cost > 0 else 0
                 
                 for i in range(1, months + 1):
-                    # Assume 3% monthly cost increase
-                    predicted_cost = monthly_cost * (1 + (0.03 * i))
+                    # Assume 2% monthly cost increase (more realistic)
+                    predicted_cost = base_cost * (1 + (0.02 * i))
                     cost_trend.append({
                         'month': i,
                         'predicted_cost': round(predicted_cost, 2),
@@ -683,28 +714,46 @@ class DashboardAIService:
         try:
             benchmarks = {}
             
-            # Revenue benchmark
-            if historical_data and current_data.get('revenue'):
-                historical_avg = sum([d.get('revenue', 0) for d in historical_data]) / len(historical_data) if historical_data else 0
+            # Revenue benchmark - compare current month with historical average
+            if historical_data:
+                # Calculate average of historical months (excluding current month)
+                historical_revenues = [d.get('revenue', 0) for d in historical_data if isinstance(d, dict)]
+                historical_avg = sum(historical_revenues) / len(historical_revenues) if historical_revenues else 0
                 current_revenue = current_data.get('revenue', 0)
-                revenue_change = ((current_revenue - historical_avg) / historical_avg * 100) if historical_avg > 0 else 0
+                
+                # Calculate percentage change
+                if historical_avg > 0:
+                    revenue_change = ((current_revenue - historical_avg) / historical_avg * 100)
+                elif current_revenue > 0:
+                    revenue_change = 100  # New revenue, 100% increase
+                else:
+                    revenue_change = 0
                 
                 benchmarks['revenue'] = {
-                    'current': current_revenue,
-                    'historical_avg': historical_avg,
+                    'current': round(current_revenue, 2),
+                    'historical_avg': round(historical_avg, 2),
                     'change_percent': round(revenue_change, 2),
                     'trend': 'up' if revenue_change > 0 else 'down' if revenue_change < 0 else 'stable'
                 }
             
-            # Project completion benchmark
-            if historical_data and current_data.get('completed_projects'):
-                historical_completed = sum([d.get('completed_projects', 0) for d in historical_data]) / len(historical_data) if historical_data else 0
+            # Project completion benchmark - compare current month with historical average
+            if historical_data:
+                # Calculate average of historical months (excluding current month)
+                historical_completions = [d.get('completed_projects', 0) for d in historical_data if isinstance(d, dict)]
+                historical_avg_completed = sum(historical_completions) / len(historical_completions) if historical_completions else 0
                 current_completed = current_data.get('completed_projects', 0)
-                completion_change = ((current_completed - historical_completed) / historical_completed * 100) if historical_completed > 0 else 0
+                
+                # Calculate percentage change
+                if historical_avg_completed > 0:
+                    completion_change = ((current_completed - historical_avg_completed) / historical_avg_completed * 100)
+                elif current_completed > 0:
+                    completion_change = 100  # New completions, 100% increase
+                else:
+                    completion_change = 0
                 
                 benchmarks['project_completion'] = {
                     'current': current_completed,
-                    'historical_avg': historical_completed,
+                    'historical_avg': round(historical_avg_completed, 2),
                     'change_percent': round(completion_change, 2),
                     'trend': 'up' if completion_change > 0 else 'down' if completion_change < 0 else 'stable'
                 }

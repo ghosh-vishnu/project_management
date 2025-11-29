@@ -1538,7 +1538,11 @@ def dashboard_trend_predictions(request):
         
         months = int(request.GET.get('months', 6))
         
-        # Get financial data (last 12 months)
+        # Get actual total revenue and cost from all time
+        total_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(status='paid')]))
+        total_cost = float(sum([exp.amount for exp in Expense.objects.all()]))
+        
+        # Get financial data (last 12 months) for trend analysis
         financial_data = []
         for i in range(12):
             month_date = timezone.now() - timedelta(days=30 * i)
@@ -1555,6 +1559,17 @@ def dashboard_trend_predictions(request):
                 'revenue': month_revenue,
                 'cost': month_cost
             })
+        
+        # If no monthly data, use average of total revenue/cost
+        if all(d['revenue'] == 0 for d in financial_data) and total_revenue > 0:
+            avg_monthly_revenue = total_revenue / 12
+            for d in financial_data:
+                d['revenue'] = avg_monthly_revenue
+        
+        if all(d['cost'] == 0 for d in financial_data) and total_cost > 0:
+            avg_monthly_cost = total_cost / 12
+            for d in financial_data:
+                d['cost'] = avg_monthly_cost
         
         # Get project data
         project_data = []
@@ -1588,13 +1603,22 @@ def dashboard_performance_benchmark(request):
         from invoices.models import Invoice
         from projects.models import Project
         
-        # Get current data
-        current_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(status='paid')]))
-        current_completed = Project.objects.filter(status='completed').count()
+        # Get current month data
+        current_month = timezone.now()
+        current_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(
+            status='paid',
+            created_at__month=current_month.month,
+            created_at__year=current_month.year
+        )]))
+        current_completed = Project.objects.filter(
+            status='completed',
+            end_date__month=current_month.month,
+            end_date__year=current_month.year
+        ).count()
         
-        # Get historical data (last 6 months)
+        # Get historical data (last 6 months, excluding current month)
         historical_data = []
-        for i in range(6):
+        for i in range(1, 7):  # Start from 1 to exclude current month
             month_date = timezone.now() - timedelta(days=30 * i)
             month_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(
                 status='paid',
@@ -1610,6 +1634,24 @@ def dashboard_performance_benchmark(request):
                 'revenue': month_revenue,
                 'completed_projects': month_completed
             })
+        
+        # If no historical data, use total averages as fallback
+        if all(d['revenue'] == 0 for d in historical_data):
+            total_revenue = float(sum([inv.amount for inv in Invoice.objects.filter(status='paid')]))
+            total_completed = Project.objects.filter(status='completed').count()
+            if total_revenue > 0:
+                avg_monthly_revenue = total_revenue / max(1, len([d for d in historical_data if d['revenue'] > 0] or [1]))
+                for d in historical_data:
+                    if d['revenue'] == 0:
+                        d['revenue'] = avg_monthly_revenue
+        
+        if all(d['completed_projects'] == 0 for d in historical_data):
+            total_completed = Project.objects.filter(status='completed').count()
+            if total_completed > 0:
+                avg_monthly_completed = total_completed / max(1, len([d for d in historical_data if d['completed_projects'] > 0] or [1]))
+                for d in historical_data:
+                    if d['completed_projects'] == 0:
+                        d['completed_projects'] = avg_monthly_completed
         
         current_data = {
             'revenue': current_revenue,
