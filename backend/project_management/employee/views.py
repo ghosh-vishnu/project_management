@@ -733,14 +733,15 @@ def dashboard_kanban_data(request):
         due = 0
         over_due = 0
         due_projects = []
+        over_due_projects = []
         
         for project in projects:
             if project.end_date:
                 days_remaining = (project.end_date - today).days
                 if days_remaining < 0:
                     over_due += 1
-                    if len(due_projects) < 6:
-                        due_projects.append({'id': project.id, 'name': project.title})
+                    if len(over_due_projects) < 6:
+                        over_due_projects.append({'id': project.id, 'name': project.title})
                 elif days_remaining <= 7:
                     due += 1
                     if len(due_projects) < 6:
@@ -748,31 +749,51 @@ def dashboard_kanban_data(request):
                 else:
                     on_time += 1
         
+        # Combine due and over due projects for display (prioritize over due)
+        all_due_projects = over_due_projects + due_projects
+        
         # Workload calculation (based on tasks per employee)
         employees = Employee.objects.filter(is_active=True)
         total_tasks = Task.objects.count()
         active_employees = employees.count()
         
         if active_employees > 0:
-            avg_tasks_per_employee = total_tasks / active_employees
-            # Assuming healthy range is 5-15 tasks per employee
-            healthy_count = sum(1 for emp in employees if 5 <= Task.objects.filter(assigned_to=emp).count() <= 15)
-            underutilised_count = sum(1 for emp in employees if Task.objects.filter(assigned_to=emp).count() < 5)
-            overutilised_count = sum(1 for emp in employees if Task.objects.filter(assigned_to=emp).count() > 15)
+            # Count employees in each category based on their task count
+            # Healthy range: 5-15 tasks per employee
+            healthy_count = 0
+            underutilised_count = 0
+            overutilised_count = 0
+            
+            for emp in employees:
+                task_count = Task.objects.filter(assigned_to=emp).count()
+                if task_count < 5:
+                    underutilised_count += 1
+                elif task_count > 15:
+                    overutilised_count += 1
+                else:
+                    healthy_count += 1
             
             total_workload = healthy_count + underutilised_count + overutilised_count
+            
             if total_workload > 0:
-                healthy_percent = int((healthy_count / total_workload) * 100)
-                underutilised_percent = int((underutilised_count / total_workload) * 100)
+                # Calculate percentages with proper rounding to ensure they add up to 100%
+                healthy_percent = round((healthy_count / total_workload) * 100)
+                underutilised_percent = round((underutilised_count / total_workload) * 100)
                 overutilised_percent = 100 - healthy_percent - underutilised_percent
+                
+                # Ensure no negative values
+                if overutilised_percent < 0:
+                    overutilised_percent = 0
             else:
-                healthy_percent = 85
-                underutilised_percent = 13
-                overutilised_percent = 2
+                # Default values when no employees have tasks
+                healthy_percent = 0
+                underutilised_percent = 100
+                overutilised_percent = 0
         else:
-            healthy_percent = 85
-            underutilised_percent = 13
-            overutilised_percent = 2
+            # Default values when no active employees
+            healthy_percent = 0
+            underutilised_percent = 0
+            overutilised_percent = 0
         
         # Project by Project Manager
         # Group by email (unique identifier) but display name
@@ -907,7 +928,9 @@ def dashboard_kanban_data(request):
                 'on_time': on_time,
                 'due': due,
                 'over_due': over_due,
-                'due_projects': due_projects
+                'due_projects': all_due_projects[:6],  # Show up to 6 projects (over due first, then due)
+                'over_due_projects': over_due_projects[:3],  # Top 3 over due projects
+                'due_soon_projects': due_projects[:3]  # Top 3 due soon projects
             },
             'workload': {
                 'healthy': healthy_percent,

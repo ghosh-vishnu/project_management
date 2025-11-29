@@ -4,9 +4,9 @@ import { Outlet } from 'react-router'
 
 const Layout = () => {
   return (
-    <div>
+    <div style={{ height: '100vh', overflow: 'hidden' }}>
         <Sidebar>
-            <div style={{ width: '100%', minHeight: '100vh' }}>
+            <div style={{ width: '100%', height: '100vh', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
               <Outlet/>
             </div>
         </Sidebar>

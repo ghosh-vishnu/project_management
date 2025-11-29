@@ -118,7 +118,7 @@ const Dashboard = () => {
   const financial = kanbanData.financial || {};
 
   return (
-    <div className="p-6 bg-gray-100 min-h-screen">
+    <div className="p-6 bg-gray-100 pb-8" style={{ overflowX: 'hidden', overflowY: 'auto', height: '100%' }}>
       {/* Title */}
       <h1 className="text-3xl font-bold text-gray-800 mb-6">Project Management Dashboard</h1>
 
@@ -150,7 +150,7 @@ const Dashboard = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
                 className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-72 bg-gray-800 text-white rounded-lg p-4 shadow-xl z-50 pointer-events-none"
-                style={{ top: '100%' }}
+                style={{ top: '100%', willChange: 'transform' }}
               >
                 <h4 className="font-semibold mb-2 text-sm border-b border-gray-600 pb-2">Project Details</h4>
                 <div className="space-y-1.5 text-xs">
@@ -235,7 +235,7 @@ const Dashboard = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
                 className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-72 bg-gray-800 text-white rounded-lg p-4 shadow-xl z-50 pointer-events-none"
-                style={{ top: '100%' }}
+                style={{ top: '100%', willChange: 'transform' }}
               >
                 <h4 className="font-semibold mb-2 text-sm border-b border-gray-600 pb-2">Revenue Details</h4>
                 <div className="space-y-1.5 text-xs">
@@ -307,7 +307,7 @@ const Dashboard = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
                 className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-72 bg-gray-800 text-white rounded-lg p-4 shadow-xl z-50 pointer-events-none"
-                style={{ top: '100%' }}
+                style={{ top: '100%', willChange: 'transform' }}
               >
                 <h4 className="font-semibold mb-2 text-sm border-b border-gray-600 pb-2">Cost Details</h4>
                 <div className="space-y-1.5 text-xs">
@@ -379,7 +379,7 @@ const Dashboard = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
                 className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-72 bg-gray-800 text-white rounded-lg p-4 shadow-xl z-50 pointer-events-none"
-                style={{ top: '100%' }}
+                style={{ top: '100%', willChange: 'transform' }}
               >
                 <h4 className="font-semibold mb-2 text-sm border-b border-gray-600 pb-2">Margin Details</h4>
                 <div className="space-y-1.5 text-xs">
@@ -581,7 +581,10 @@ const Dashboard = () => {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.5 }}
-          className="bg-white rounded-lg p-6 shadow-md"
+          className="bg-white rounded-lg p-6 shadow-md cursor-pointer relative overflow-visible"
+          onClick={() => navigate('/projects')}
+          onMouseEnter={() => setHoveredChart('dueDate')}
+          onMouseLeave={() => setHoveredChart(null)}
         >
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Project by Due Date</h3>
           {loading ? (
@@ -608,7 +611,7 @@ const Dashboard = () => {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex-1 pl-6">
+              <div className="flex-1 pl-6 overflow-visible">
                 <div className="space-y-3">
                   {dueDateData.map((item, index) => (
                     <div key={index} className="flex items-center gap-2">
@@ -618,24 +621,77 @@ const Dashboard = () => {
                       />
                       <span className="text-sm text-gray-700">{item.name}</span>
                       <span className="text-sm font-semibold text-gray-800 ml-auto">{item.value}</span>
-              </div>
+                    </div>
                   ))}
-            </div>
+                </div>
                 {kanbanData.project_due_date?.due_projects && kanbanData.project_due_date.due_projects.length > 0 && (
                   <div className="mt-6">
-                    <h4 className="text-sm font-semibold text-gray-800 mb-2">Due</h4>
+                    <h4 className="text-sm font-semibold text-gray-800 mb-2">Due Projects</h4>
                     <div className="space-y-1">
                       {kanbanData.project_due_date.due_projects.slice(0, 6).map((project, idx) => (
-                        <div key={idx} className="text-sm text-gray-600">
-                          {project.name}
-              </div>
+                        <div 
+                          key={idx} 
+                          className="text-sm text-gray-600 hover:text-blue-600 cursor-pointer transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/projects?id=${project.id}`);
+                          }}
+                        >
+                          • {project.name}
+                        </div>
                       ))}
-            </div>
               </div>
+            </div>
                 )}
               </div>
             </div>
           )}
+          
+          {/* Hover Tooltip */}
+          <AnimatePresence>
+            {hoveredChart === 'dueDate' && (
+                <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-72 bg-gray-800 text-white rounded-lg p-4 shadow-xl z-50 pointer-events-none"
+                style={{ top: '100%', willChange: 'transform' }}
+              >
+                <h4 className="font-semibold mb-2 text-sm border-b border-gray-600 pb-2">Due Date Breakdown</h4>
+                <div className="space-y-1.5 text-xs">
+                  {dueDateData.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: COLORS.dueDate[idx] }}
+                        />
+                        <span>{item.name}:</span>
+              </div>
+                      <span className="font-semibold">{item.value} projects</span>
+        </div>
+                  ))}
+              </div>
+                {kanbanData.project_due_date?.due_projects && kanbanData.project_due_date.due_projects.length > 0 && (
+                  <div className="mt-3 pt-2 border-t border-gray-600">
+                    <div className="font-semibold mb-2 text-xs">Due Projects:</div>
+                    <div className="space-y-1">
+                      {kanbanData.project_due_date.due_projects.slice(0, 5).map((project, idx) => (
+                        <div key={idx} className="text-xs text-gray-300">• {project.name}</div>
+                      ))}
+            </div>
+        </div>
+                )}
+                <div className="mt-3 pt-2 border-t border-gray-600 text-xs text-blue-300 font-medium">
+                  Click chart to view all projects →
+                </div>
+                {/* Arrow */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 -mb-1">
+                  <div className="w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Workload - Donut Chart */}
@@ -644,6 +700,7 @@ const Dashboard = () => {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.6 }}
           className="bg-white rounded-lg p-6 shadow-md cursor-pointer relative"
+          style={{ overflow: 'visible' }}
           onClick={() => navigate('/employee')}
           onMouseEnter={() => setHoveredChart('workload')}
           onMouseLeave={() => setHoveredChart(null)}
@@ -689,6 +746,47 @@ const Dashboard = () => {
               </div>
             </div>
           )}
+          
+          {/* Hover Tooltip */}
+          <AnimatePresence>
+            {hoveredChart === 'workload' && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-4 w-72 bg-gray-800 text-white rounded-lg p-4 shadow-xl z-[9999] pointer-events-none"
+                style={{ bottom: 'calc(100% + 8px)', maxWidth: '90vw' }}
+              >
+                <h4 className="font-semibold mb-2 text-sm border-b border-gray-600 pb-2">Workload Distribution</h4>
+                <div className="space-y-1.5 text-xs">
+                  {workloadData.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: COLORS.workload[idx] }}
+                        />
+                        <span>{item.name}:</span>
+                      </div>
+                      <span className="font-semibold">{item.value}%</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 pt-2 border-t border-gray-600 text-xs text-gray-400">
+                  <div className="mb-1">• Healthy: 5-15 tasks per employee</div>
+                  <div className="mb-1">• Underutilised: Less than 5 tasks</div>
+                  <div>• Overutilised: More than 15 tasks</div>
+                </div>
+                <div className="mt-3 pt-2 border-t border-gray-600 text-xs text-blue-300 font-medium">
+                  Click chart to view all employees →
+                </div>
+                {/* Arrow */}
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                  <div className="w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-gray-800"></div>
+        </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Project by Project Manager - Horizontal Bar Chart */}
@@ -697,6 +795,7 @@ const Dashboard = () => {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.7 }}
           className="bg-white rounded-lg p-6 shadow-md cursor-pointer relative"
+          style={{ overflow: 'visible' }}
           onClick={() => navigate('/projects')}
           onMouseEnter={() => setHoveredChart('managers')}
           onMouseLeave={() => setHoveredChart(null)}
@@ -706,13 +805,13 @@ const Dashboard = () => {
             <div className="flex items-center justify-center h-64">Loading...</div>
           ) : kanbanData.project_managers && kanbanData.project_managers.length > 0 ? (
             <>
-              <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={kanbanData.project_managers} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis type="number" stroke="#6b7280" />
                   <YAxis dataKey="name" type="category" width={120} stroke="#6b7280" />
                   <RechartsTooltip
-                    contentStyle={{ 
+                contentStyle={{ 
                       backgroundColor: '#fff',
                       border: '1px solid #e5e7eb',
                       borderRadius: '8px'
@@ -729,17 +828,17 @@ const Dashboard = () => {
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+          </ResponsiveContainer>
               
               {/* Hover Tooltip */}
               <AnimatePresence>
                 {hoveredChart === 'managers' && (
                   <motion.div
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-72 bg-gray-800 text-white rounded-lg p-4 shadow-xl z-50 pointer-events-none"
-                    style={{ top: '100%' }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-4 w-72 bg-gray-800 text-white rounded-lg p-4 shadow-xl z-[9999] pointer-events-none"
+                    style={{ bottom: 'calc(100% + 8px)', maxWidth: '90vw' }}
                   >
                     <h4 className="font-semibold mb-2 text-sm border-b border-gray-600 pb-2">Top Project Managers</h4>
                     <div className="space-y-1.5 text-xs">
@@ -760,8 +859,8 @@ const Dashboard = () => {
                       Click chart to view all projects →
                     </div>
                     {/* Arrow */}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 -mb-1">
-                      <div className="w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-gray-800"></div>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                      <div className="w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-gray-800"></div>
                     </div>
                   </motion.div>
                 )}

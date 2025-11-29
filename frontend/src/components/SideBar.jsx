@@ -973,7 +973,7 @@ export default function Sidebar({ children }) {
             </div>
           </div>
 
-          <div className="p-6 h-full overflow-y-scroll w-screen  lg:w-full  ">
+          <div className="p-6 h-full w-screen lg:w-full overflow-y-auto overflow-x-hidden">
             {children}
           </div>
         </div>
