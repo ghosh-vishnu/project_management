@@ -10,5 +10,8 @@ requests==2.32.5
 pdfplumber==0.11.4
 python-docx==1.1.2
 docx2txt==0.8
-# spacy==3.8.1  # Not compatible with Python 3.14 - install manually if needed: pip install spacy
+
+# Production Server
+gunicorn==21.2.0
+whitenoise==6.7.0
 
