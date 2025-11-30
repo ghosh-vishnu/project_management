@@ -1,14 +1,32 @@
+# Core Django Framework
 Django==5.2.6
 djangorestframework==3.16.1
 python-decouple==3.8
-Pillow==11.0.0
+
+# Database
 psycopg2-binary==2.9.11
+
+# File Handling
+Pillow==11.0.0
+
+# CORS & Security
 django-cors-headers==4.7.0
+
+# HTTP Requests
 requests==2.32.5
 
 # Resume Parser Dependencies
 pdfplumber==0.11.4
 python-docx==1.1.2
 docx2txt==0.8
-# spacy==3.8.1  # Not compatible with Python 3.14 - install manually if needed: pip install spacy
+
+# Production Server (for Render deployment)
+gunicorn==21.2.0
+
+# Static Files Serving (for production)
+whitenoise==6.7.0
+
+# Optional: spaCy for advanced NLP (uncomment if needed)
+# spacy==3.8.1
+# Note: After installing spacy, download model: python -m spacy download en_core_web_sm
 

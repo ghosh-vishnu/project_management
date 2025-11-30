@@ -29,5 +29,16 @@ urlpatterns = [
     path('ai/team-recommendations/', views.ai_team_recommendations, name='ai-team-recommendations'),
     path('ai/churn-prediction/', views.ai_churn_prediction, name='ai-churn-prediction'),
     path('ai/natural-language-search/', views.ai_natural_language_search, name='ai-natural-language-search'),
+    
+    # Dashboard AI endpoints
+    path('dashboard/ai/insights-comprehensive/', views.dashboard_ai_insights_comprehensive, name='dashboard-ai-insights-comprehensive'),
+    path('dashboard/ai/revenue-forecast/', views.dashboard_revenue_forecast, name='dashboard-revenue-forecast'),
+    path('dashboard/ai/project-health-scores/', views.dashboard_project_health_scores, name='dashboard-project-health-scores'),
+    path('dashboard/ai/anomaly-detection/', views.dashboard_anomaly_detection, name='dashboard-anomaly-detection'),
+    path('dashboard/ai/smart-recommendations/', views.dashboard_smart_recommendations, name='dashboard-smart-recommendations'),
+    path('dashboard/ai/risk-assessment/', views.dashboard_risk_assessment, name='dashboard-risk-assessment'),
+    path('dashboard/ai/trend-predictions/', views.dashboard_trend_predictions, name='dashboard-trend-predictions'),
+    path('dashboard/ai/performance-benchmark/', views.dashboard_performance_benchmark, name='dashboard-performance-benchmark'),
+    path('dashboard/ai/natural-language-query/', views.dashboard_natural_language_query, name='dashboard-natural-language-query'),
 ]
 
