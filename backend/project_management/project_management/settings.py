@@ -97,13 +97,17 @@ WSGI_APPLICATION = 'project_management.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 # PostgreSQL Configuration
-# Render provides DATABASE_URL, parse it if available, otherwise use individual variables
-import dj_database_url
+# Render/Railway provides DATABASE_URL, parse it if available, otherwise use individual variables
+try:
+    import dj_database_url
+    DJ_DATABASE_URL_AVAILABLE = True
+except ImportError:
+    DJ_DATABASE_URL_AVAILABLE = False
 
 DATABASE_URL = config('DATABASE_URL', default=None)
 
-if DATABASE_URL:
-    # Use DATABASE_URL (Render automatically provides this)
+if DATABASE_URL and DJ_DATABASE_URL_AVAILABLE:
+    # Use DATABASE_URL (Render/Railway automatically provides this)
     DATABASES = {
         'default': dj_database_url.parse(DATABASE_URL)
     }
