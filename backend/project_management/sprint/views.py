@@ -532,12 +532,23 @@ def sprint_comment_detail(request, sprint_id, comment_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def users_list(request):
-    """Get list of users for task assignment"""
+    """Get list of users for task assignment - only active employees"""
     from django.contrib.auth.models import User
+    from employee.models import Employee
     from .serializers import UserMiniSerializer
     
     try:
-        users = User.objects.filter(is_active=True)
+        # Only return users who have an active Employee profile
+        # This filters out test users, inactive employees, and other non-employee users
+        active_employee_user_ids = Employee.objects.filter(
+            is_active=True
+        ).values_list('user_id', flat=True)
+        
+        users = User.objects.filter(
+            id__in=active_employee_user_ids,
+            is_active=True
+        ).order_by('username')
+        
         serializer = UserMiniSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     except Exception as e:

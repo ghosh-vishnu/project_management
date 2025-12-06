@@ -238,7 +238,7 @@ const CreateTaskModal = ({ open, onClose, sprintId, onTaskCreated }) => {
                       <MenuItem value="">Unassigned</MenuItem>
                       {users.map((user) => (
                         <MenuItem key={user.id} value={user.id.toString()}>
-                          {user.name || user.username}
+                          {user.name || user.username}{user.email ? ` (${user.email})` : ''}
                         </MenuItem>
                       ))}
                     </Select>

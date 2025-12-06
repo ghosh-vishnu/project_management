@@ -13,3 +13,9 @@ python manage.py collectstatic --noinput --clear
 
 echo "Build completed!"
 
+
+
+
+
+
+

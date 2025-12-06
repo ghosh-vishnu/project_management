@@ -474,7 +474,10 @@ const SprintComments = ({ sprintId }) => {
           />
           <Autocomplete
             options={users}
-            getOptionLabel={(option) => option.name || option.username || ""}
+            getOptionLabel={(option) => {
+              const name = option.name || option.username || "";
+              return name + (option.email ? ` (${option.email})` : "");
+            }}
             value={filterUser}
             onChange={(event, newValue) => {
               setFilterUser(newValue);
@@ -504,7 +507,7 @@ const SprintComments = ({ sprintId }) => {
                 >
                   {(option.name || option.username || "U").charAt(0).toUpperCase()}
                 </Avatar>
-                {option.name || option.username || "User"}
+                {option.name || option.username || "User"}{option.email ? ` (${option.email})` : ""}
               </Box>
             )}
           />

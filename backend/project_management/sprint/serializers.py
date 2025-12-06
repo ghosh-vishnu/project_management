@@ -14,8 +14,22 @@ class UserMiniSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'name']
     
     def get_name(self, obj):
+        # First priority: Employee profile name (if exists)
+        try:
+            if hasattr(obj, 'employee_profile') and obj.employee_profile:
+                employee = obj.employee_profile
+                if employee.name:
+                    return employee.name
+        except Exception:
+            pass
+        
+        # Second priority: User's full name
         full = f"{obj.first_name} {obj.last_name}".strip()
-        return full or obj.username
+        if full:
+            return full
+        
+        # Last resort: Username
+        return obj.username
 
 
 class ProjectMiniSerializer(serializers.ModelSerializer):
